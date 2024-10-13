@@ -14,6 +14,5 @@ func ValidateCallGasLimit(op *userop.UserOperation, ov *gas.Overhead) error {
 		return fmt.Errorf("callGasLimit: below expected gas of %s", cg.String())
 	}
 
-	fmt.Println("callGasLimit: ok")
 	return nil
 }

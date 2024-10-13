@@ -32,6 +32,5 @@ func ValidateFeePerGas(op *userop.UserOperation, gbf gasprice.GetBaseFeeFunc) er
 		return fmt.Errorf("maxFeePerGas: must be equal to or greater than current block.basefee")
 	}
 
-	fmt.Println("feePerGas: ok")
 	return nil
 }

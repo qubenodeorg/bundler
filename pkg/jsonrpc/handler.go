@@ -96,7 +96,6 @@ func handleRequest(api interface{}, c *gin.Context, data map[string]any) (id any
 		return id, nil, false
 	}
 
-	fmt.Println("Method:", method)
 	call := reflect.ValueOf(api).MethodByName(cases.Title(language.Und, cases.NoLower).String(method))
 	if !call.IsValid() {
 		jsonrpcError(c, -32601, "Method not found", "Method not found", &id)

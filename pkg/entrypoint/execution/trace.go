@@ -2,7 +2,6 @@ package execution
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -70,7 +69,7 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		MaxFeePerGas: hexutil.Big(*mf),
 	}
 	opts := utils.TraceCallOpts{
-		Tracer:         "callTracer",
+		Tracer:         in.Tracer,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), in.Sos),
 	}
 	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
@@ -81,22 +80,17 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	j, _ := json.MarshalIndent(callTrace, "", "  ")
-	fmt.Println(string(j))
-
 	if callTrace.ValidationOOG {
 		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, "validation OOG", nil)
 	}
 	if callTrace.ValidationOOG {
 		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, "validation OOG", nil)
 	}
-	fmt.Println("HERE 1")
 
 	outErr, err := errors.ParseHexToRpcDataError(callTrace.Output)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("HERE 2")
 	out.Trace = callTrace
 
 	sim, simErr := reverts.NewExecutionResult(outErr)
@@ -109,31 +103,25 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		}
 		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
 	}
-	fmt.Println("HERE 3")
 	out.Result = sim
 
 	if len(callTrace.Reverts) != 0 {
 		data, err := hexutil.Decode(callTrace.Reverts[len(callTrace.Reverts)-1])
 		if err != nil {
-			fmt.Println("HERE 5", err)
 			return out, err
 		}
 
 		if len(data) == 0 {
 			if callTrace.ExecutionOOG {
-				fmt.Println("HERE 6")
 				return out, errors.NewRPCError(errors.EXECUTION_REVERTED, "execution OOG", nil)
 			}
-			fmt.Println("HERE 7")
 			return out, errors.NewRPCError(errors.EXECUTION_REVERTED, "execution reverted", nil)
 		}
 
 		reason, revErr := errors.DecodeRevert(data)
 		if revErr != nil {
-			fmt.Println("HERE 8", revErr)
 			code, panErr := errors.DecodePanic(data)
 			if panErr != nil {
-				fmt.Println("HERE 9", panErr)
 				return nil, errors.NewRPCError(
 					errors.EXECUTION_REVERTED,
 					"execution reverted with data",
@@ -141,17 +129,17 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 				)
 			}
 
-			fmt.Println("HERE 10")
 			return out, errors.NewRPCError(
 				errors.EXECUTION_REVERTED,
 				fmt.Sprintf("panic encountered: %s", code),
 				code,
 			)
 		}
-		fmt.Println("HERE 11", reason, reason)
+		if reason == "" {
+			return out, nil
+		}
 		return out, errors.NewRPCError(errors.EXECUTION_REVERTED, reason, reason)
 	}
-	fmt.Println("HERE 4")
 
 	return out, nil
 }

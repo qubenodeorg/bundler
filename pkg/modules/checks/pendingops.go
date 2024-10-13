@@ -53,6 +53,5 @@ func ValidatePendingOps(
 		}
 	}
 
-	fmt.Println("pendingOps: ok")
 	return nil
 }

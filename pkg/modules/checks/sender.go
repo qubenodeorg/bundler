@@ -2,7 +2,6 @@ package checks
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/zarbanio/bundler/pkg/userop"
 )
@@ -21,8 +20,6 @@ func ValidateSender(op *userop.UserOperation, gc GetCodeFunc) error {
 	if len(bytecode) > 0 && len(op.InitCode) > 0 {
 		return errors.New("sender: already deployed, initCode must be empty")
 	}
-
-	fmt.Println("sender: ok")
 
 	return nil
 }

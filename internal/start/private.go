@@ -45,6 +45,7 @@ func PrivateMode() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	fmt.Println("EOA Address: ", eoa.Address.Hex())
 	beneficiary := common.HexToAddress(conf.Beneficiary)
 
 	db, err := badger.Open(badger.DefaultOptions(conf.DataDirectory))
@@ -144,7 +145,7 @@ func PrivateMode() {
 			ov,
 			chain,
 			conf.MaxBatchGasLimit,
-			conf.NativeBundlerExecutorTracer,
+			"callTracer",
 		),
 	)
 	c.SetGetUserOpByHashFunc(client.GetUserOpByHashWithEthClient(eth))
@@ -173,7 +174,6 @@ func PrivateMode() {
 		gasprice.FilterUnderpriced(),
 		batch.SortByNonce(),
 		batch.MaintainGasLimit(conf.MaxBatchGasLimit),
-		check.CodeHashes(),
 		check.PaymasterDeposit(),
 		check.SimulateBatch(),
 		relayer.SendUserOperation(),

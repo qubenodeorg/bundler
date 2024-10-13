@@ -25,7 +25,5 @@ func ValidateGasAvailable(op *userop.UserOperation, maxBatchGasLimit *big.Int) e
 		return fmt.Errorf("gasLimit: exceeds maxBatchGasLimit of %s", maxBatchGasLimit.String())
 	}
 
-	fmt.Println("gasAvailable: ok")
-
 	return nil
 }

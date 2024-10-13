@@ -106,12 +106,25 @@ func TestMain(t *testing.T) {
 	}
 	userOp.Signature = signature
 
-	err = GetPaymasterAndData(userOp, entryPointAddress)
+	newUserOp, err := GetPaymasterAndData(userOp, entryPointAddress)
 	if err != nil {
 		log.Fatalf("Failed to get paymaster and data: %v", err)
 	}
+	userOpHash = newUserOp.GetUserOpHash(entryPointAddress, chainID)
+	fmt.Println("NewUserOperationHash:", userOpHash.Hex())
+	messageHash = accounts.TextHash([]byte(userOpHash.Bytes()))
+	fmt.Println("NewMessageHash:", common.Bytes2Hex(messageHash))
 
-	userOpJSON, err := json.MarshalIndent(userOp, "", "  ")
+	signature, err = crypto.Sign(messageHash, privateKey)
+	if err != nil {
+		log.Fatalf("Failed to sign UserOperationHash: %v", err)
+	}
+	if signature[64] < 27 {
+		signature[64] += 27
+	}
+	newUserOp.Signature = signature
+
+	userOpJSON, err := json.MarshalIndent(newUserOp, "", "  ")
 	if err != nil {
 		log.Fatalf("Failed to marshal UserOperation: %v", err)
 	}
@@ -129,7 +142,7 @@ func TestMain(t *testing.T) {
 	}
 
 	var result common.Hash
-	err = rpcClient.Call(&result, "eth_sendUserOperation", userOp, entryPointAddress.Hex())
+	err = rpcClient.Call(&result, "eth_sendUserOperation", newUserOp, entryPointAddress.Hex())
 	if err != nil {
 		log.Fatalf("Bundler error: %v", err)
 	}
@@ -146,10 +159,10 @@ type SponsorUserOperationResponse struct {
 }
 
 // Update the function implementation
-func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.Address) error {
+func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.Address) (*userop.UserOperation, error) {
 	userOpMap, err := userOp.ToMap()
 	if err != nil {
-		return fmt.Errorf("failed to convert UserOperation to map: %v", err)
+		return nil, fmt.Errorf("failed to convert UserOperation to map: %v", err)
 	}
 
 	// Prepare the JSON-RPC request
@@ -169,20 +182,20 @@ func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.
 	// Convert the request to JSON
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		return fmt.Errorf("failed to marshal JSON-RPC request: %v", err)
+		return nil, fmt.Errorf("failed to marshal JSON-RPC request: %v", err)
 	}
 
 	// Send the POST request
 	resp, err := http.Post(paymasterUrl, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("failed to call pm_sponsorUserOperation: %v", err)
+		return nil, fmt.Errorf("failed to call pm_sponsorUserOperation: %v", err)
 	}
 	defer resp.Body.Close()
 
 	// Read and parse the response
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response body: %v", err)
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
 	var response struct {
@@ -197,23 +210,23 @@ func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.
 	}
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		return fmt.Errorf("failed to parse JSON-RPC response: %v", err)
+		return nil, fmt.Errorf("failed to parse JSON-RPC response: %v", err)
 	}
 
 	if response.Error != nil {
-		return fmt.Errorf("pm_sponsorUserOperation error: %s", response.Error.Message)
+		return nil, fmt.Errorf("pm_sponsorUserOperation error: %s", response.Error.Message)
 	}
 
 	j, _ := json.MarshalIndent(response, "", "  ")
 	fmt.Println("Response:", string(j))
 
-	userOp.PaymasterAndData = common.Hex2Bytes(response.Result.PaymasterAndData)
+	userOp.PaymasterAndData = common.Hex2Bytes(strings.Trim(response.Result.PaymasterAndData, "0x"))
 
 	// Convert gas values from hex strings to big.Int and update userOp
 	if response.Result.PreVerificationGas != "" {
 		preVerificationGas, err := hexutil.DecodeBig(response.Result.PreVerificationGas)
 		if err != nil {
-			return fmt.Errorf("failed to decode preVerificationGas: %v", err)
+			return nil, fmt.Errorf("failed to decode preVerificationGas: %v", err)
 		}
 		userOp.PreVerificationGas = preVerificationGas
 	}
@@ -221,7 +234,7 @@ func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.
 	if response.Result.VerificationGasLimit != "" {
 		verificationGasLimit, err := hexutil.DecodeBig(response.Result.VerificationGasLimit)
 		if err != nil {
-			return fmt.Errorf("failed to decode verificationGasLimit: %v", err)
+			return nil, fmt.Errorf("failed to decode verificationGasLimit: %v", err)
 		}
 		userOp.VerificationGasLimit = verificationGasLimit
 	}
@@ -229,10 +242,10 @@ func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.
 	if response.Result.CallGasLimit != "" {
 		callGasLimit, err := hexutil.DecodeBig(response.Result.CallGasLimit)
 		if err != nil {
-			return fmt.Errorf("failed to decode callGasLimit: %v", err)
+			return nil, fmt.Errorf("failed to decode callGasLimit: %v", err)
 		}
 		userOp.CallGasLimit = callGasLimit
 	}
 
-	return nil
+	return userOp, nil
 }

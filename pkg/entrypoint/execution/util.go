@@ -46,10 +46,9 @@ func ProcessBundlerExecution(call *Call) (*tracer.BundlerExecutionReturn, error)
 		SenderAddress:     "", // Set this if known
 	}
 	result := &tracer.BundlerExecutionReturn{
-		Reverts:           []string{},
-		Output:            call.Output,
-		Error:             call.Error,
-		ExecutionGasLimit: hexToFloat64(call.Gas),
+		Reverts: []string{},
+		Output:  call.Output,
+		Error:   call.Error,
 	}
 
 	traverseCalls(call, result, context)
@@ -85,6 +84,11 @@ func traverseCalls(call *Call, result *tracer.BundlerExecutionReturn, context *C
 				result.ExecutionOOG = true
 			}
 		}
+	}
+
+	if context.IsExecutionPhase {
+		gasUsed := hexToFloat64(call.GasUsed)
+		result.ExecutionGasLimit += gasUsed
 	}
 
 	// Identify phases based on call addresses or types

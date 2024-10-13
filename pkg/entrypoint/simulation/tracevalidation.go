@@ -42,6 +42,7 @@ type TraceOutput struct {
 // TraceSimulateValidation makes a debug_traceCall to Entrypoint.simulateValidation(userop) and returns
 // information related to the validation phase of a UserOperation.
 func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
+	fmt.Println("TraceSimulateValidation")
 	ep, err := entrypoint.NewEntrypoint(in.EntryPoint, ethclient.NewClient(in.Rpc))
 	if err != nil {
 		return nil, err
@@ -56,10 +57,7 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := tracer.Loaded.BundlerCollectorTracer
-	if in.Tracer != "" {
-		t = in.Tracer
-	}
+	t := "callTracer"
 
 	var res tracer.BundlerCollectorReturn
 	req := utils.TraceCallReq{
@@ -72,7 +70,6 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		Tracer:         t,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
-
 	j, _ := json.MarshalIndent(req, "", "  ")
 	fmt.Println(string(j))
 

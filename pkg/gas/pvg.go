@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"math"
 	"math/big"
 
@@ -91,8 +90,6 @@ func CalcArbitrumPVGWithEthClient(
 		if err := rpc.Call(&out, "eth_call", &req, "latest"); err != nil {
 			return nil, err
 		}
-
-		fmt.Println("out", out)
 
 		// Return static + GasEstimateForL1 as PVG
 		gas, err := nodeinterface.DecodeGasEstimateL1ComponentOutput(out)

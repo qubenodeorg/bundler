@@ -94,7 +94,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 // SimulateOp returns a UserOpHandler that runs through simulation of new UserOps with the EntryPoint.
 func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 	return func(ctx *modules.UserOpHandlerCtx) error {
-		gc := getCodeWithEthClient(s.eth)
+		// gc := getCodeWithEthClient(s.eth)
 		g := new(errgroup.Group)
 		g.Go(func() error {
 			sim, err := simulation.SimulateValidation(s.rpc, ctx.EntryPoint, ctx.UserOp)
@@ -120,29 +120,30 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 			return nil
 		})
 		g.Go(func() error {
-			out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
-				Rpc:                s.rpc,
-				EntryPoint:         ctx.EntryPoint,
-				AltMempools:        s.alt,
-				Op:                 ctx.UserOp,
-				ChainID:            ctx.ChainID,
-				IsRIP7212Supported: s.isRIP7212Supported,
-				Tracer:             s.tracer,
-				Stakes: simulation.EntityStakes{
-					ctx.UserOp.Sender:         ctx.GetSenderDepositInfo(),
-					ctx.UserOp.GetFactory():   ctx.GetFactoryDepositInfo(),
-					ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
-				},
-			})
-			if err != nil {
-				return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
-			}
+			return nil
+			// out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
+			// 	Rpc:                s.rpc,
+			// 	EntryPoint:         ctx.EntryPoint,
+			// 	AltMempools:        s.alt,
+			// 	Op:                 ctx.UserOp,
+			// 	ChainID:            ctx.ChainID,
+			// 	IsRIP7212Supported: s.isRIP7212Supported,
+			// 	Tracer:             s.tracer,
+			// 	Stakes: simulation.EntityStakes{
+			// 		ctx.UserOp.Sender:         ctx.GetSenderDepositInfo(),
+			// 		ctx.UserOp.GetFactory():   ctx.GetFactoryDepositInfo(),
+			// 		ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
+			// 	},
+			// })
+			// if err != nil {
+			// 	return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
+			// }
 
-			ch, err := getCodeHashes(out.TouchedContracts, gc)
-			if err != nil {
-				return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
-			}
-			return saveCodeHashes(s.db, ctx.UserOp.GetUserOpHash(ctx.EntryPoint, ctx.ChainID), ch)
+			// ch, err := getCodeHashes(out.TouchedContracts, gc)
+			// if err != nil {
+			// 	return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
+			// }
+			// return saveCodeHashes(s.db, ctx.UserOp.GetUserOpHash(ctx.EntryPoint, ctx.ChainID), ch)
 		})
 
 		return g.Wait()

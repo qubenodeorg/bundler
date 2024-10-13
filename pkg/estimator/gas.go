@@ -1,7 +1,6 @@
 package estimator
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/big"
 
@@ -110,9 +109,6 @@ func (g *GasEstimator) OverrideOpGasLimitsForPND(
 	if err != nil {
 		return nil, fmt.Errorf("failed to update paymasterAndData: %w", err)
 	}
-
-	j, _ := json.MarshalIndent(pmOp, "", "  ")
-	fmt.Println("UserOperation:", string(j))
 
 	// Run EstimateGas.
 	vgl, cgl, err := gas.EstimateGas(&gas.EstimateInput{

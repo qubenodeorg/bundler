@@ -1,6 +1,8 @@
 package gas
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/big"
 	"strings"
 
@@ -170,11 +172,15 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 	}
 
 	// Calculate final values for verificationGasLimit and callGasLimit.
+	fmt.Println("out.Trace.ExecutionGasLimit", out.Trace.ExecutionGasLimit)
 	vgl := simOp.VerificationGasLimit
 	cgl := big.NewInt(int64(out.Trace.ExecutionGasLimit))
 	if cgl.Cmp(in.Ov.NonZeroValueCall()) < 0 {
+		fmt.Println("cgl < in.Ov.NonZeroValueCall()")
 		cgl = in.Ov.NonZeroValueCall()
 	}
+
+	fmt.Println("callGasLimit", cgl)
 
 	// Run a final simulation using actual gas fees and to confirm one-shot tracing is ok.
 	data["maxFeePerGas"] = hexutil.EncodeBig(in.Op.MaxFeePerGas)
@@ -185,6 +191,19 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 	if err != nil {
 		return 0, 0, err
 	}
+	// function _getRequiredPrefund(MemoryUserOp memory mUserOp) internal pure returns (uint256 requiredPrefund) {
+	// 	unchecked {
+	// 		//when using a Paymaster, the verificationGasLimit is used also to as a limit for the postOp call.
+	// 		// our security model might call postOp eventually twice
+	// 		uint256 mul = mUserOp.paymaster != address(0) ? 3 : 1;
+	// 		uint256 requiredGas = mUserOp.callGasLimit + mUserOp.verificationGasLimit * mul + mUserOp.preVerificationGas;
+
+	// 		requiredPrefund = requiredGas * mUserOp.maxFeePerGas;
+	// 	}
+
+	fmt.Println("Final simulation")
+	j, _ := json.MarshalIndent(simOp, "", "  ")
+	fmt.Println(string(j))
 	_, err = execution.TraceSimulateHandleOp(&execution.TraceInput{
 		Rpc:        in.Rpc,
 		EntryPoint: in.EntryPoint,

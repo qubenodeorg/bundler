@@ -2,7 +2,6 @@ package checks
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/pkg/userop"
@@ -18,8 +17,6 @@ func ValidateInitCode(op *userop.UserOperation) error {
 	if f == common.HexToAddress("0x") {
 		return errors.New("initCode: does not contain a valid address")
 	}
-
-	fmt.Println("initCode: ok")
 
 	return nil
 }

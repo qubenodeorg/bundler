@@ -143,7 +143,6 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
-	fmt.Println("here 0")
 	l = l.
 		WithValues("entrypoint", epAddr.String()).
 		WithValues("chain_id", i.chainID.String())
@@ -153,12 +152,9 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
-	fmt.Println("here 1")
 
 	hash := userOp.GetUserOpHash(epAddr, i.chainID)
 	l = l.WithValues("userop_hash", hash)
-
-	fmt.Println("here 2")
 
 	// Run through client module stack.
 	ctx, err := modules.NewUserOpHandlerContext(
@@ -172,13 +168,10 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
-	fmt.Println("here 3")
 	if err := i.userOpHandler(ctx); err != nil {
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
-
-	fmt.Println("here 4")
 
 	// Add userOp to mempool.
 	if err := i.mempool.AddOp(epAddr, ctx.UserOp); err != nil {
