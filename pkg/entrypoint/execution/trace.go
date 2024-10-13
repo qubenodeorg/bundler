@@ -60,8 +60,8 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &TraceOutput{}
 
+	out := &TraceOutput{}
 	var call Call
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
@@ -73,54 +73,67 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		Tracer:         "callTracer",
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), in.Sos),
 	}
-	j, _ := json.MarshalIndent(opts, "", "  ")
-	jj, _ := json.MarshalIndent(req, "", "  ")
-	fmt.Println(string(jj))
-	fmt.Println(string(j))
 	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
 		return nil, err
 	}
-	res, err := ProcessBundlerExecution(&call)
+	callTrace, err := ProcessBundlerExecution(&call)
 	if err != nil {
 		return nil, err
 	}
-	jj, _ = json.MarshalIndent(res, "", "  ")
-	fmt.Println(string(jj))
 
-	out.Trace = res
-	if res.ValidationOOG {
+	j, _ := json.MarshalIndent(callTrace, "", "  ")
+	fmt.Println(string(j))
+
+	if callTrace.ValidationOOG {
 		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, "validation OOG", nil)
 	}
+	if callTrace.ValidationOOG {
+		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, "validation OOG", nil)
+	}
+	fmt.Println("HERE 1")
 
-	// sim, simErr := reverts.NewExecutionResult(fmt.Errorf(res.Error))
-	// if simErr != nil {
-	// 	fo, foErr := reverts.NewFailedOp(fmt.Errorf(res.Error))
-	// 	if foErr != nil && res.Error != "" {
-	// 		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, res.Error, nil)
-	// 	} else if foErr != nil {
-	// 		return nil, fmt.Errorf("%s, %s", simErr, foErr)
-	// 	}
-	// 	return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
-	// }
-	// out.Result = sim
+	outErr, err := errors.ParseHexToRpcDataError(callTrace.Output)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("HERE 2")
+	out.Trace = callTrace
 
-	if len(res.Reverts) != 0 {
-		data, err := hexutil.Decode(res.Reverts[len(res.Reverts)-1])
+	sim, simErr := reverts.NewExecutionResult(outErr)
+	if simErr != nil {
+		fo, foErr := reverts.NewFailedOp(outErr)
+		if foErr != nil && callTrace.Error != "" {
+			return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, callTrace.Error, nil)
+		} else if foErr != nil {
+			return nil, fmt.Errorf("%s, %s", simErr, foErr)
+		}
+		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+	}
+	fmt.Println("HERE 3")
+	out.Result = sim
+
+	if len(callTrace.Reverts) != 0 {
+		data, err := hexutil.Decode(callTrace.Reverts[len(callTrace.Reverts)-1])
 		if err != nil {
+			fmt.Println("HERE 5", err)
 			return out, err
 		}
 
 		if len(data) == 0 {
-			if res.ExecutionOOG {
+			if callTrace.ExecutionOOG {
+				fmt.Println("HERE 6")
 				return out, errors.NewRPCError(errors.EXECUTION_REVERTED, "execution OOG", nil)
 			}
+			fmt.Println("HERE 7")
 			return out, errors.NewRPCError(errors.EXECUTION_REVERTED, "execution reverted", nil)
 		}
 
 		reason, revErr := errors.DecodeRevert(data)
 		if revErr != nil {
+			fmt.Println("HERE 8", revErr)
 			code, panErr := errors.DecodePanic(data)
 			if panErr != nil {
+				fmt.Println("HERE 9", panErr)
 				return nil, errors.NewRPCError(
 					errors.EXECUTION_REVERTED,
 					"execution reverted with data",
@@ -128,14 +141,17 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 				)
 			}
 
+			fmt.Println("HERE 10")
 			return out, errors.NewRPCError(
 				errors.EXECUTION_REVERTED,
 				fmt.Sprintf("panic encountered: %s", code),
 				code,
 			)
 		}
+		fmt.Println("HERE 11", reason, reason)
 		return out, errors.NewRPCError(errors.EXECUTION_REVERTED, reason, reason)
 	}
+	fmt.Println("HERE 4")
 
 	return out, nil
 }
