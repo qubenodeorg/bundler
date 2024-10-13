@@ -2,9 +2,9 @@ package simulation
 
 import (
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/methods"
-	"github.com/stackup-wallet/stackup-bundler/pkg/tracer"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/entrypoint/methods"
+	"github.com/zarbanio/bundler/pkg/tracer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 type knownEntity map[string]struct {

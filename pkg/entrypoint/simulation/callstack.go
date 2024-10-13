@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/internal/utils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/tracer"
+	"github.com/zarbanio/bundler/internal/utils"
+	"github.com/zarbanio/bundler/pkg/tracer"
 )
 
 type callEntry struct {

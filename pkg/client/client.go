@@ -3,20 +3,24 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-logr/logr"
-	"github.com/stackup-wallet/stackup-bundler/internal/logger"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/filter"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/stake"
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
-	"github.com/stackup-wallet/stackup-bundler/pkg/mempool"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/noop"
-	"github.com/stackup-wallet/stackup-bundler/pkg/state"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/internal/logger"
+	"github.com/zarbanio/bundler/pkg/entrypoint/filter"
+	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
+	"github.com/zarbanio/bundler/pkg/gas"
+	"github.com/zarbanio/bundler/pkg/handlers"
+	"github.com/zarbanio/bundler/pkg/handlers/payg"
+	"github.com/zarbanio/bundler/pkg/mempool"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/modules/noop"
+	"github.com/zarbanio/bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // Client controls the end to end process of adding incoming UserOperations to the mempool. It also
@@ -34,6 +38,10 @@ type Client struct {
 	getUserOpByHash      GetUserOpByHashFunc
 	getStakeFunc         stake.GetStakeFunc
 	opLookupLimit        uint64
+
+	eth         *ethclient.Client
+	ep2pms      map[common.Address][]common.Address
+	paygHandler *payg.Handler
 }
 
 // New initializes a new ERC-4337 client which can be extended with modules for validating UserOperations
@@ -125,6 +133,7 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
+	fmt.Println("here 0")
 	l = l.
 		WithValues("entrypoint", epAddr.String()).
 		WithValues("chain_id", i.chainID.String())
@@ -134,8 +143,12 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
+	fmt.Println("here 1")
+
 	hash := userOp.GetUserOpHash(epAddr, i.chainID)
 	l = l.WithValues("userop_hash", hash)
+
+	fmt.Println("here 2")
 
 	// Run through client module stack.
 	ctx, err := modules.NewUserOpHandlerContext(
@@ -149,10 +162,13 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
+	fmt.Println("here 3")
 	if err := i.userOpHandler(ctx); err != nil {
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
+
+	fmt.Println("here 4")
 
 	// Add userOp to mempool.
 	if err := i.mempool.AddOp(epAddr, ctx.UserOp); err != nil {
@@ -288,4 +304,77 @@ func (i *Client) SupportedEntryPoints() ([]string, error) {
 // This method is used to validate that the client's chainID is in sync with the caller.
 func (i *Client) ChainID() (string, error) {
 	return hexutil.EncodeBig(i.chainID), nil
+}
+
+func (c *Client) Accounts(ep string) ([]string, error) {
+	l := c.logger.WithName("pm_accounts")
+
+	epAddr := common.HexToAddress(ep)
+	pmAddr, ok := c.ep2pms[epAddr]
+	if !ok {
+		err := errors.New("entryPoint: Implementation not supported")
+		l.Error(err, "pm_accounts error")
+		return nil, err
+	}
+	l = l.WithValues("entrypoint", epAddr.String()).
+		WithValues("paymasters", pmAddr).
+		WithValues("chain_id", c.chainID.String())
+
+	res := []string{}
+	for _, pm := range pmAddr {
+		res = append(res, pm.Hex())
+	}
+	l.Info("pm_accounts ok")
+
+	return res, nil
+}
+
+func (c *Client) SponsorUserOperation(
+	op map[string]any,
+	ep string,
+	ctx map[string]any,
+) (*handlers.SponsorUserOperationResponse, error) {
+	l := c.logger.WithName("pm_sponsorUserOperation")
+
+	epAddr := common.HexToAddress(ep)
+	pmAddrs, ok := c.ep2pms[epAddr]
+	if !ok {
+		err := errors.New("entryPoint: Implementation not supported")
+		l.Error(err, "pm_sponsorUserOperation error")
+		return nil, err
+	}
+	l = l.WithValues("entrypoint", epAddr.String()).
+		WithValues("paymasters", pmAddrs).
+		WithValues("chain_id", c.chainID.String())
+
+	userOp, err := userop.New(op)
+	if err != nil {
+		err = fmt.Errorf("bad userOp: %s", err)
+		l.Error(err, "pm_sponsorUserOperation error")
+		return nil, err
+	}
+
+	ct, err := handlers.NewContextType(ctx)
+	if err != nil {
+		err = fmt.Errorf("bad context: %s", err)
+		l.Error(err, "pm_sponsorUserOperation error")
+		return nil, err
+	}
+	l = l.WithValues("type", ct.Type)
+
+	switch ct.Type {
+	case "payg":
+		res, err := c.paygHandler.Run(userOp, epAddr, pmAddrs[0])
+		if err != nil {
+			l.Error(err, "pm_sponsorUserOperation error")
+			return nil, err
+		}
+
+		l.Info("pm_sponsorUserOperation ok")
+		return res, nil
+	default:
+		err := fmt.Errorf("type: %s not recognized", ct.Type)
+		l.Error(err, "pm_sponsorUserOperation error")
+		return nil, err
+	}
 }

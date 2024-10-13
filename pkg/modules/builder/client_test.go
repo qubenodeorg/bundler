@@ -9,9 +9,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/metachris/flashbotsrpc"
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 func TestSendUserOperationWithAllUpstreamErrors(t *testing.T) {

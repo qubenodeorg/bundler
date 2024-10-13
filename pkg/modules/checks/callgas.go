@@ -3,8 +3,8 @@ package checks
 import (
 	"fmt"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/gas"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // ValidateCallGasLimit checks the callGasLimit is at least the cost of a CALL with non-zero value.
@@ -14,5 +14,6 @@ func ValidateCallGasLimit(op *userop.UserOperation, ov *gas.Overhead) error {
 		return fmt.Errorf("callGasLimit: below expected gas of %s", cg.String())
 	}
 
+	fmt.Println("callGasLimit: ok")
 	return nil
 }

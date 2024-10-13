@@ -4,8 +4,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/altmempools"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/altmempools"
 )
 
 func TestDirectoryHasSingleInvalidStorageAccessException(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // TestSuggestMeanGasTipCapForNormalLoad simulates a scenario of normal network load. In this case the average

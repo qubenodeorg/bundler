@@ -3,7 +3,7 @@ package batch
 import (
 	"sort"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/modules"
 )
 
 // SortByNonce returns a BatchHandlerFunc that ensures ops with same sender is ordered by ascending nonce

@@ -3,7 +3,7 @@ package checks
 import (
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
+	"github.com/zarbanio/bundler/internal/testutils"
 )
 
 // TestSenderExistAndInitCodeDNE calls checks.ValidateSender where sender contract exist and initCode does

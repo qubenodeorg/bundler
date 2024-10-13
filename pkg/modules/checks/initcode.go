@@ -2,9 +2,10 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // ValidateInitCode checks if initCode is not empty and has a valid factory address.
@@ -17,6 +18,8 @@ func ValidateInitCode(op *userop.UserOperation) error {
 	if f == common.HexToAddress("0x") {
 		return errors.New("initCode: does not contain a valid address")
 	}
+
+	fmt.Println("initCode: ok")
 
 	return nil
 }

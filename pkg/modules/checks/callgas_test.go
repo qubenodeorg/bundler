@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/gas"
 )
 
 // TestOpCGLessThanOH calls checks.ValidateCallGasLimit where callGas < overhead. Expect error.

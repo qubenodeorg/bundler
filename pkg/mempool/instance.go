@@ -5,7 +5,7 @@ package mempool
 import (
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // Mempool provides read and write access to a pool of pending UserOperations which have passed all Client

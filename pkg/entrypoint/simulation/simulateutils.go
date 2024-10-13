@@ -3,7 +3,7 @@ package simulation
 import (
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint"
+	"github.com/zarbanio/bundler/pkg/entrypoint"
 )
 
 // EntityStakes provides a mapping for encountered entity addresses and their stake info on the EntryPoint.

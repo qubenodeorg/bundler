@@ -9,9 +9,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-logr/logr"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/transaction"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/entrypoint/transaction"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/signer"
 )
 
 // Relayer provides a module that can relay batches with a regular EOA. Relaying batches to the EntryPoint

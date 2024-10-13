@@ -2,6 +2,7 @@ package simulation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -13,13 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/stackup-wallet/stackup-bundler/pkg/altmempools"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/methods"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/utils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/state"
-	"github.com/stackup-wallet/stackup-bundler/pkg/tracer"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/altmempools"
+	"github.com/zarbanio/bundler/pkg/entrypoint"
+	"github.com/zarbanio/bundler/pkg/entrypoint/methods"
+	"github.com/zarbanio/bundler/pkg/entrypoint/utils"
+	"github.com/zarbanio/bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/tracer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 type TraceInput struct {
@@ -71,6 +72,10 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		Tracer:         t,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
+
+	j, _ := json.MarshalIndent(req, "", "  ")
+	fmt.Println(string(j))
+
 	if err := in.Rpc.CallContext(context.Background(), &res, "debug_traceCall", &req, "latest", &opts); err != nil {
 		return nil, err
 	}

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
+	"github.com/zarbanio/bundler/internal/testutils"
 )
 
 func TestIsValidUserOpHash(t *testing.T) {

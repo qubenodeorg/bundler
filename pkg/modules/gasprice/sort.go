@@ -3,7 +3,7 @@ package gasprice
 import (
 	"sort"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/modules"
 )
 
 // SortByGasPrice returns a BatchHandlerFunc that will sort the context batch by highest GasPrice first.

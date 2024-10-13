@@ -4,7 +4,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/stackup-wallet/stackup-bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/state"
 )
 
 type EthCallReq struct {

@@ -8,12 +8,13 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-logr/logr"
-	"github.com/stackup-wallet/stackup-bundler/internal/logger"
-	"github.com/stackup-wallet/stackup-bundler/pkg/mempool"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/gasprice"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/noop"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/internal/logger"
+	"github.com/zarbanio/bundler/pkg/mempool"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/modules/gasprice"
+	"github.com/zarbanio/bundler/pkg/modules/noop"
+	"github.com/zarbanio/bundler/pkg/userop"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 )

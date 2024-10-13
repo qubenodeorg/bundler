@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
+	"github.com/zarbanio/bundler/internal/testutils"
 )
 
 // TestUserOperationGetDynamicGasPrice verifies that (*UserOperation).GetDynamicGasPrice returns the correct

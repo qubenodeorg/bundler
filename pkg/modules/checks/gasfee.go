@@ -3,8 +3,8 @@ package checks
 import (
 	"fmt"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/gasprice"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/modules/gasprice"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // ValidateFeePerGas checks the maxFeePerGas is sufficiently high to be included with the current
@@ -32,5 +32,6 @@ func ValidateFeePerGas(op *userop.UserOperation, gbf gasprice.GetBaseFeeFunc) er
 		return fmt.Errorf("maxFeePerGas: must be equal to or greater than current block.basefee")
 	}
 
+	fmt.Println("feePerGas: ok")
 	return nil
 }

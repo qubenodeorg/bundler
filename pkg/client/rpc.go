@@ -1,10 +1,15 @@
 package client
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/filter"
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/zarbanio/bundler/pkg/entrypoint/filter"
+	"github.com/zarbanio/bundler/pkg/gas"
+	"github.com/zarbanio/bundler/pkg/handlers"
 )
 
 // Named UserOperation type for jsonrpc package.
@@ -15,13 +20,14 @@ type optional_stateOverride map[string]any
 
 // RpcAdapter is an adapter for routing JSON-RPC method calls to the correct client functions.
 type RpcAdapter struct {
-	client *Client
-	debug  *Debug
+	client  *Client
+	debug   *Debug
+	backend *rpc.Client
 }
 
 // NewRpcAdapter initializes a new RpcAdapter which can be used with a JSON-RPC server.
-func NewRpcAdapter(client *Client, debug *Debug) *RpcAdapter {
-	return &RpcAdapter{client, debug}
+func NewRpcAdapter(client *Client, debug *Debug, backend *rpc.Client) *RpcAdapter {
+	return &RpcAdapter{client: client, debug: debug, backend: backend}
 }
 
 // Eth_sendUserOperation routes method calls to *Client.SendUserOperation.
@@ -114,4 +120,32 @@ func (r *RpcAdapter) Debug_bundler_dumpReputation(ep string) ([]map[string]any, 
 	}
 
 	return r.debug.DumpReputation(ep)
+}
+
+func (r *RpcAdapter) Eth_call(args interface{}, blockNumber string) ([]byte, error) {
+	var hex hexutil.Bytes
+	err := r.backend.CallContext(context.Background(), &hex, "eth_call", args, blockNumber)
+	if err != nil {
+		return nil, err
+	}
+	return hex, nil
+}
+
+func (r *RpcAdapter) Eth_getBlockByNumber(args ...interface{}) ([]byte, error) {
+	var raw json.RawMessage
+	err := r.backend.CallContext(context.Background(), &raw, "eth_getBlockByNumber", args...)
+	if err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func (r *RpcAdapter) Pm_accounts(ep string) ([]string, error) {
+	return r.client.Accounts(ep)
+}
+
+func (r *RpcAdapter) Pm_sponsorUserOperation(op map[string]any,
+	ep string,
+	ctx map[string]any) (*handlers.SponsorUserOperationResponse, error) {
+	return r.client.SponsorUserOperation(op, ep, ctx)
 }

@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/stake"
-	"github.com/stackup-wallet/stackup-bundler/pkg/mempool"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/entrypoint"
+	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
+	"github.com/zarbanio/bundler/pkg/mempool"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 func TestNoPendingOps(t *testing.T) {

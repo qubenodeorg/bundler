@@ -3,6 +3,8 @@ package gas
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"math"
 	"math/big"
 
@@ -11,13 +13,13 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/stackup-wallet/stackup-bundler/pkg/arbitrum/nodeinterface"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/methods"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/transaction"
-	"github.com/stackup-wallet/stackup-bundler/pkg/optimism/gaspriceoracle"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/arbitrum/nodeinterface"
+	"github.com/zarbanio/bundler/pkg/entrypoint"
+	"github.com/zarbanio/bundler/pkg/entrypoint/methods"
+	"github.com/zarbanio/bundler/pkg/entrypoint/transaction"
+	"github.com/zarbanio/bundler/pkg/optimism/gaspriceoracle"
+	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // CalcPreVerificationGasFunc defines an interface for a function to calculate PVG given a userOp and a static
@@ -82,10 +84,15 @@ func CalcArbitrumPVGWithEthClient(
 			"to":   nodeinterface.PrecompileAddress,
 			"data": hexutil.Encode(append(nodeinterface.GasEstimateL1ComponentMethod.ID, ge...)),
 		}
+
+		j, _ := json.MarshalIndent(req, "", "  ")
+		println(string(j))
 		var out any
 		if err := rpc.Call(&out, "eth_call", &req, "latest"); err != nil {
 			return nil, err
 		}
+
+		fmt.Println("out", out)
 
 		// Return static + GasEstimateForL1 as PVG
 		gas, err := nodeinterface.DecodeGasEstimateL1ComponentOutput(out)

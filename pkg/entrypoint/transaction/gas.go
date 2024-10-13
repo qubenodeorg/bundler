@@ -4,7 +4,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // SuggestMeanGasTipCap suggests a Max Priority Fee for an EIP-1559 transaction to submit a batch of

@@ -3,7 +3,7 @@ package checks
 import (
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
+	"github.com/zarbanio/bundler/internal/testutils"
 )
 
 func TestInitCodeDNE(t *testing.T) {

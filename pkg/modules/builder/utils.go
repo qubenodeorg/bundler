@@ -5,7 +5,7 @@ import (
 	"time"
 
 	mapset "github.com/deckarep/golang-set/v2"
-	"github.com/stackup-wallet/stackup-bundler/internal/config"
+	"github.com/zarbanio/bundler/internal/config"
 )
 
 var (

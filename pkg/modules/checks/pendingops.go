@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 var (
@@ -52,5 +52,7 @@ func ValidatePendingOps(
 			}
 		}
 	}
+
+	fmt.Println("pendingOps: ok")
 	return nil
 }

@@ -2,8 +2,9 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // ValidateSender accepts a userOp and a generic function that can retrieve the bytecode of the sender.
@@ -20,6 +21,8 @@ func ValidateSender(op *userop.UserOperation, gc GetCodeFunc) error {
 	if len(bytecode) > 0 && len(op.InitCode) > 0 {
 		return errors.New("sender: already deployed, initCode must be empty")
 	}
+
+	fmt.Println("sender: ok")
 
 	return nil
 }

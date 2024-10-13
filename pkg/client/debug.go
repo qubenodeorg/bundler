@@ -8,10 +8,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/stackup-wallet/stackup-bundler/pkg/bundler"
-	"github.com/stackup-wallet/stackup-bundler/pkg/mempool"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/entities"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/bundler"
+	"github.com/zarbanio/bundler/pkg/mempool"
+	"github.com/zarbanio/bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/signer"
 )
 
 // Debug exposes methods used for testing the bundler. These should not be made available in production.

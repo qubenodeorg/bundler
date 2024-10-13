@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/stackup-wallet/stackup-bundler/internal/start"
+	"github.com/zarbanio/bundler/internal/start"
 )
 
 var startCmd = &cobra.Command{

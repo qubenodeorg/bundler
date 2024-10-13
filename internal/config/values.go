@@ -9,8 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/viper"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/entities"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/signer"
 )
 
 type Values struct {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/gas"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // ValidateGasAvailable checks that the max available gas is less than the batch gas limit.
@@ -24,6 +24,8 @@ func ValidateGasAvailable(op *userop.UserOperation, maxBatchGasLimit *big.Int) e
 	if mga.Cmp(maxBatchGasLimit) > 0 {
 		return fmt.Errorf("gasLimit: exceeds maxBatchGasLimit of %s", maxBatchGasLimit.String())
 	}
+
+	fmt.Println("gasAvailable: ok")
 
 	return nil
 }

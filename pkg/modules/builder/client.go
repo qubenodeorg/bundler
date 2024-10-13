@@ -13,9 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/metachris/flashbotsrpc"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/transaction"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/entrypoint/transaction"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/signer"
 )
 
 // BuilderClient provides a connection to a block builder API to enable UserOperations to be sent through the

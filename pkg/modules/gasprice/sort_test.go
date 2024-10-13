@@ -4,10 +4,10 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/gasprice"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/modules/gasprice"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // TestSortByGasPriceBaseDynamic verifies that SortByGasPrice sorts the UserOperations in a batch by highest

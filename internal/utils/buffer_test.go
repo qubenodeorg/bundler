@@ -4,7 +4,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/utils"
+	"github.com/zarbanio/bundler/internal/utils"
 )
 
 // TestAddBuffer verifies that AddBuffer returns a new big.Int that is increased by a given percent value.

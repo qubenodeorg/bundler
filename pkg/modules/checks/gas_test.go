@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
+	"github.com/zarbanio/bundler/internal/testutils"
 )
 
 // TestOpMAGLessThanMax calls checks.ValidateGasAvailable where op.GetMaxAvailableGas < MaxBatchGasLimit.

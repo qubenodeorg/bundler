@@ -12,10 +12,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/reverts"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+
+	"github.com/zarbanio/bundler/pkg/entrypoint"
+	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
+	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // Opts contains all the fields required for submitting a transaction to call HandleOps on the EntryPoint

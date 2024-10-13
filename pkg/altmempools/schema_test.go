@@ -3,8 +3,8 @@ package altmempools_test
 import (
 	"testing"
 
-	"github.com/stackup-wallet/stackup-bundler/internal/testutils"
-	"github.com/stackup-wallet/stackup-bundler/pkg/altmempools"
+	"github.com/zarbanio/bundler/internal/testutils"
+	"github.com/zarbanio/bundler/pkg/altmempools"
 )
 
 func TestValidatesCompliantAltMempool(t *testing.T) {

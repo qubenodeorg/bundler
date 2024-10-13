@@ -9,8 +9,8 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/stackup-wallet/stackup-bundler/pkg/errors"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/errors"
+	"github.com/zarbanio/bundler/pkg/modules"
 )
 
 // Reputation provides Client and Bundler modules to track the reputation of every entity seen in a

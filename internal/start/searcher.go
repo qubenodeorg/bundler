@@ -13,23 +13,23 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/metachris/flashbotsrpc"
-	"github.com/stackup-wallet/stackup-bundler/internal/config"
-	"github.com/stackup-wallet/stackup-bundler/internal/logger"
-	"github.com/stackup-wallet/stackup-bundler/internal/o11y"
-	"github.com/stackup-wallet/stackup-bundler/pkg/altmempools"
-	"github.com/stackup-wallet/stackup-bundler/pkg/bundler"
-	"github.com/stackup-wallet/stackup-bundler/pkg/client"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint/stake"
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
-	"github.com/stackup-wallet/stackup-bundler/pkg/jsonrpc"
-	"github.com/stackup-wallet/stackup-bundler/pkg/mempool"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/batch"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/builder"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/checks"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/entities"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/expire"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/gasprice"
-	"github.com/stackup-wallet/stackup-bundler/pkg/signer"
+	"github.com/zarbanio/bundler/internal/config"
+	"github.com/zarbanio/bundler/internal/logger"
+	"github.com/zarbanio/bundler/internal/o11y"
+	"github.com/zarbanio/bundler/pkg/altmempools"
+	"github.com/zarbanio/bundler/pkg/bundler"
+	"github.com/zarbanio/bundler/pkg/client"
+	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
+	"github.com/zarbanio/bundler/pkg/gas"
+	"github.com/zarbanio/bundler/pkg/jsonrpc"
+	"github.com/zarbanio/bundler/pkg/mempool"
+	"github.com/zarbanio/bundler/pkg/modules/batch"
+	"github.com/zarbanio/bundler/pkg/modules/builder"
+	"github.com/zarbanio/bundler/pkg/modules/checks"
+	"github.com/zarbanio/bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/modules/expire"
+	"github.com/zarbanio/bundler/pkg/modules/gasprice"
+	"github.com/zarbanio/bundler/pkg/signer"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 )
@@ -199,7 +199,7 @@ func SearcherMode() {
 		g.Status(http.StatusOK)
 	})
 	handlers := []gin.HandlerFunc{
-		jsonrpc.Controller(client.NewRpcAdapter(c, d)),
+		jsonrpc.Controller(client.NewRpcAdapter(c, d, rpc)),
 		jsonrpc.WithOTELTracerAttributes(),
 	}
 	r.POST("/", handlers...)

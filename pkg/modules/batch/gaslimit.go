@@ -3,9 +3,9 @@ package batch
 import (
 	"math/big"
 
-	"github.com/stackup-wallet/stackup-bundler/pkg/gas"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/gas"
+	"github.com/zarbanio/bundler/pkg/modules"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // MaintainGasLimit returns a BatchHandlerFunc that ensures the max gas used from the entire batch does not

@@ -2,10 +2,11 @@ package checks
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stackup-wallet/stackup-bundler/pkg/entrypoint"
-	"github.com/stackup-wallet/stackup-bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/entrypoint"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // ValidatePaymasterAndData checks the paymasterAndData is either zero bytes or the first 20 bytes contain an
@@ -19,8 +20,11 @@ func ValidatePaymasterAndData(
 	gc GetCodeFunc,
 ) error {
 	if len(op.PaymasterAndData) == 0 {
+		fmt.Println("paymaster: ok")
 		return nil
 	}
+
+	fmt.Println("paymaster: PaymasterAndData", op.PaymasterAndData)
 
 	if len(op.PaymasterAndData) < common.AddressLength {
 		return errors.New("PaymasterAndData: invalid length")
@@ -31,6 +35,7 @@ func ValidatePaymasterAndData(
 	if err != nil {
 		return err
 	}
+	fmt.Println("paymaster: bytecode", bytecode)
 	if len(bytecode) == 0 {
 		return errors.New("paymaster: code not deployed")
 	}
@@ -38,6 +43,8 @@ func ValidatePaymasterAndData(
 	if dep.Deposit.Cmp(op.GetMaxPrefund()) < 0 {
 		return errors.New("paymaster: not enough deposit to cover max prefund")
 	}
+
+	fmt.Println("paymaster: ok")
 
 	return nil
 }

@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/spf13/viper"
-	"github.com/stackup-wallet/stackup-bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/modules/entities"
 )
 
 func NewReputationConstantsFromEnv() *entities.ReputationConstants {

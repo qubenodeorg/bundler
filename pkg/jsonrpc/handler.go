@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/stackup-wallet/stackup-bundler/pkg/errors"
+	"github.com/zarbanio/bundler/pkg/errors"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -96,6 +96,7 @@ func handleRequest(api interface{}, c *gin.Context, data map[string]any) (id any
 		return id, nil, false
 	}
 
+	fmt.Println("Method:", method)
 	call := reflect.ValueOf(api).MethodByName(cases.Title(language.Und, cases.NoLower).String(method))
 	if !call.IsValid() {
 		jsonrpcError(c, -32601, "Method not found", "Method not found", &id)
