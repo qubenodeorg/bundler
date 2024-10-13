@@ -2,6 +2,7 @@ package execution
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/big"
@@ -9,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	ethRpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/zarbanio/bundler/pkg/entrypoint"
@@ -41,36 +41,6 @@ type TraceOutput struct {
 	Event  *entrypoint.EntrypointUserOperationEvent
 }
 
-func parseUserOperationEvent(
-	entryPoint common.Address,
-	ep *entrypoint.Entrypoint,
-	log *tracer.LogInfo,
-) (*entrypoint.EntrypointUserOperationEvent, error) {
-	if log == nil {
-		return nil, nil
-	}
-
-	topics := []common.Hash{}
-	for _, topic := range log.Topics {
-		topics = append(topics, common.HexToHash(topic))
-	}
-	data, err := hexutil.Decode(log.Data)
-	if err != nil {
-		return nil, err
-	}
-
-	ev, err := ep.ParseUserOperationEvent(types.Log{
-		Address: entryPoint,
-		Topics:  topics,
-		Data:    data,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return ev, nil
-}
-
 func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	ep, err := entrypoint.NewEntrypoint(in.EntryPoint, ethclient.NewClient(in.Rpc))
 	if err != nil {
@@ -90,13 +60,9 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := tracer.Loaded.BundlerExecutionTracer
-	if in.Tracer != "" {
-		t = in.Tracer
-	}
 	out := &TraceOutput{}
 
-	var res tracer.BundlerExecutionReturn
+	var call Call
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
 		To:           in.EntryPoint,
@@ -104,40 +70,41 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		MaxFeePerGas: hexutil.Big(*mf),
 	}
 	opts := utils.TraceCallOpts{
-		Tracer:         t,
+		Tracer:         "callTracer",
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), in.Sos),
 	}
-	if err := in.Rpc.CallContext(context.Background(), &res, "debug_traceCall", &req, "latest", &opts); err != nil {
+	j, _ := json.MarshalIndent(opts, "", "  ")
+	jj, _ := json.MarshalIndent(req, "", "  ")
+	fmt.Println(string(jj))
+	fmt.Println(string(j))
+	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
 		return nil, err
 	}
-	outErr, err := errors.ParseHexToRpcDataError(res.Output)
+	res, err := ProcessBundlerExecution(&call)
 	if err != nil {
 		return nil, err
 	}
+	jj, _ = json.MarshalIndent(res, "", "  ")
+	fmt.Println(string(jj))
+
+	out.Trace = res
 	if res.ValidationOOG {
 		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, "validation OOG", nil)
 	}
-	out.Trace = &res
 
-	sim, simErr := reverts.NewExecutionResult(outErr)
-	if simErr != nil {
-		fo, foErr := reverts.NewFailedOp(outErr)
-		if foErr != nil && res.Error != "" {
-			return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, res.Error, nil)
-		} else if foErr != nil {
-			return nil, fmt.Errorf("%s, %s", simErr, foErr)
-		}
-		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
-	}
-	out.Result = sim
+	// sim, simErr := reverts.NewExecutionResult(fmt.Errorf(res.Error))
+	// if simErr != nil {
+	// 	fo, foErr := reverts.NewFailedOp(fmt.Errorf(res.Error))
+	// 	if foErr != nil && res.Error != "" {
+	// 		return nil, errors.NewRPCError(errors.EXECUTION_REVERTED, res.Error, nil)
+	// 	} else if foErr != nil {
+	// 		return nil, fmt.Errorf("%s, %s", simErr, foErr)
+	// 	}
+	// 	return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+	// }
+	// out.Result = sim
 
-	ev, err := parseUserOperationEvent(in.EntryPoint, ep, res.UserOperationEvent)
-	if err != nil {
-		return out, err
-	}
-	out.Event = ev
-
-	if !ev.Success && len(res.Reverts) != 0 {
+	if len(res.Reverts) != 0 {
 		data, err := hexutil.Decode(res.Reverts[len(res.Reverts)-1])
 		if err != nil {
 			return out, err

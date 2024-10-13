@@ -1,6 +1,8 @@
 package contract
 
 import (
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/zarbanio/bundler/pkg/userop"
@@ -13,10 +15,10 @@ func GetHash(
 ) ([32]byte, error) {
 	pm, err := NewContract(data.Paymaster, eth)
 	if err != nil {
-		return [32]byte{}, err
+		return [32]byte{}, fmt.Errorf("failed to create paymaster contract: %w", err)
 	}
 
-	return pm.GetHash(
+	hash, err := pm.GetHash(
 		&bind.CallOpts{},
 		UserOperation(*op),
 		data.ValidUntil,
@@ -24,4 +26,9 @@ func GetHash(
 		data.ERC20Token,
 		data.ExchangeRate,
 	)
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("failed to call getHash: %w", err)
+	}
+
+	return hash, nil
 }

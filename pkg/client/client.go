@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/go-logr/logr"
 	"github.com/zarbanio/bundler/internal/logger"
 	"github.com/zarbanio/bundler/pkg/entrypoint/filter"
@@ -19,6 +20,7 @@ import (
 	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/noop"
+	"github.com/zarbanio/bundler/pkg/signer"
 	"github.com/zarbanio/bundler/pkg/state"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
@@ -39,7 +41,6 @@ type Client struct {
 	getStakeFunc         stake.GetStakeFunc
 	opLookupLimit        uint64
 
-	eth         *ethclient.Client
 	ep2pms      map[common.Address][]common.Address
 	paygHandler *payg.Handler
 }
@@ -52,6 +53,9 @@ func New(
 	chainID *big.Int,
 	supportedEntryPoints []common.Address,
 	opLookupLimit uint64,
+	signer *signer.EOA,
+	eth *ethclient.Client,
+	rpc *rpc.Client,
 ) *Client {
 	return &Client{
 		mempool:              mempool,
@@ -66,6 +70,12 @@ func New(
 		getUserOpByHash:      getUserOpByHashNoop(),
 		getStakeFunc:         stake.GetStakeFuncNoop(),
 		opLookupLimit:        opLookupLimit,
+		paygHandler:          payg.New(signer, rpc, eth, chainID, ov),
+		ep2pms: map[common.Address][]common.Address{
+			supportedEntryPoints[0]: {
+				common.HexToAddress("0x2b9755b522757931981ca5b90e821786B75382AB"),
+			},
+		},
 	}
 }
 

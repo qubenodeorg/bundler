@@ -14,7 +14,9 @@ func Sign(message []byte, signer *signer.EOA) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	sig[64] += 27
+	if sig[64] < 27 {
+		sig[64] += 27
+	}
 
 	return sig, nil
 }

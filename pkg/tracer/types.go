@@ -73,11 +73,10 @@ type BundlerCollectorReturn struct {
 
 // BundlerExecutionReturn is the return value from performing an EVM trace with BundlerExecutionTracer.js.
 type BundlerExecutionReturn struct {
-	Reverts            []string `json:"reverts"`
-	ValidationOOG      bool     `json:"validationOOG"`
-	ExecutionOOG       bool     `json:"executionOOG"`
-	ExecutionGasLimit  float64  `json:"executionGasLimit"`
-	UserOperationEvent *LogInfo `json:"userOperationEvent,omitempty"`
-	Output             string   `json:"output"`
-	Error              string   `json:"error"`
+	Reverts           []string `json:"reverts"`
+	ValidationOOG     bool     `json:"validationOOG"`
+	ExecutionOOG      bool     `json:"executionOOG"`
+	ExecutionGasLimit float64  `json:"executionGasLimit"`
+	Output            string   `json:"output"`
+	Error             string   `json:"error"`
 }

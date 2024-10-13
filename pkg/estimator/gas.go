@@ -1,6 +1,8 @@
 package estimator
 
 import (
+	"encoding/json"
+	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -93,20 +95,24 @@ func (g *GasEstimator) OverrideOpGasLimitsForPND(
 	// Generate a PND for EstimateGas.
 	hash, err := contract.GetHash(g.eth, op, data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get contract hash: %w", err)
 	}
+
 	sig, err := contract.Sign(hash[:], g.signer)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to sign contract hash: %w", err)
 	}
 	pnd, err := contract.EncodePaymasterAndData(data, sig)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to encode paymasterAndData: %w", err)
 	}
 	pmOp, err := updateOpPaymasterAndData(op, hexutil.Encode(pnd))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update paymasterAndData: %w", err)
 	}
+
+	j, _ := json.MarshalIndent(pmOp, "", "  ")
+	fmt.Println("UserOperation:", string(j))
 
 	// Run EstimateGas.
 	vgl, cgl, err := gas.EstimateGas(&gas.EstimateInput{
@@ -116,28 +122,28 @@ func (g *GasEstimator) OverrideOpGasLimitsForPND(
 		Ov:          g.ov,
 		ChainID:     g.chainID,
 		MaxGasLimit: maxGasLimit,
-		Tracer:      "bundlerExecutorTracer",
+		Tracer:      "callTracer",
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to estimate gas: %w", err)
 	}
 
 	// Update gas fields.
 	pmOp, err = updateOpPaymasterAndData(pmOp, DummyPaymasterAndDataHex)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update paymasterAndData: %w", err)
 	}
 	pmOp, err = updateOpVerificationGasLimit(pmOp, big.NewInt(int64(vgl)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update verificationGasLimit: %w", err)
 	}
 	pmOp, err = updateOpCallGasLimit(pmOp, big.NewInt(int64(cgl)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update callGasLimit: %w", err)
 	}
 	pmOp, err = updateOpPreVerificationGas(pmOp, g.ov)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update preVerificationGas: %w", err)
 	}
 
 	return pmOp, nil
