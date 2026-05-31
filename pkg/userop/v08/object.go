@@ -147,31 +147,41 @@ func (op *UserOperation) Pack() []byte {
 }
 
 func (op *UserOperation) PackForSignature() []byte {
+	accountGasLimits := [32]byte{}
+	if op.VerificationGasLimit != nil {
+		copy(accountGasLimits[0:16], common.LeftPadBytes(op.VerificationGasLimit.Bytes(), 16))
+	}
+	if op.CallGasLimit != nil {
+		copy(accountGasLimits[16:32], common.LeftPadBytes(op.CallGasLimit.Bytes(), 16))
+	}
+
+	gasFees := [32]byte{}
+	if op.MaxPriorityFeePerGas != nil {
+		copy(gasFees[0:16], common.LeftPadBytes(op.MaxPriorityFeePerGas.Bytes(), 16))
+	}
+	if op.MaxFeePerGas != nil {
+		copy(gasFees[16:32], common.LeftPadBytes(op.MaxFeePerGas.Bytes(), 16))
+	}
+
 	args := abi.Arguments{
 		{Name: "sender", Type: addressType},
 		{Name: "nonce", Type: uint256Type},
 		{Name: "hashInitCode", Type: bytes32Type},
 		{Name: "hashCallData", Type: bytes32Type},
-		{Name: "callGasLimit", Type: uint256Type},
-		{Name: "verificationGasLimit", Type: uint256Type},
+		{Name: "accountGasLimits", Type: bytes32Type},
 		{Name: "preVerificationGas", Type: uint256Type},
-		{Name: "maxFeePerGas", Type: uint256Type},
-		{Name: "maxPriorityFeePerGas", Type: uint256Type},
+		{Name: "gasFees", Type: bytes32Type},
 		{Name: "hashPaymasterAndData", Type: bytes32Type},
-		{Name: "hashEip7702Auth", Type: bytes32Type},
 	}
 	packed, _ := args.Pack(
 		op.Sender,
 		op.Nonce,
 		crypto.Keccak256Hash(op.assembleInitCode()),
 		crypto.Keccak256Hash(op.CallData),
-		op.CallGasLimit,
-		op.VerificationGasLimit,
+		accountGasLimits,
 		op.PreVerificationGas,
-		op.MaxFeePerGas,
-		op.MaxPriorityFeePerGas,
+		gasFees,
 		crypto.Keccak256Hash(op.assemblePaymasterAndData()),
-		crypto.Keccak256Hash(op.EIP7702Auth),
 	)
 
 	return packed

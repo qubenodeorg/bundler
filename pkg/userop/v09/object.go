@@ -149,34 +149,78 @@ func (op *UserOperation) Pack() []byte {
 	return (hexutil.MustDecode(enc))
 }
 
+func (op *UserOperation) packAccountGasLimits() [32]byte {
+	out := [32]byte{}
+	if op.VerificationGasLimit != nil {
+		copy(out[0:16], common.LeftPadBytes(op.VerificationGasLimit.Bytes(), 16))
+	}
+	if op.CallGasLimit != nil {
+		copy(out[16:32], common.LeftPadBytes(op.CallGasLimit.Bytes(), 16))
+	}
+	return out
+}
+
+func (op *UserOperation) packGasFees() [32]byte {
+	out := [32]byte{}
+	if op.MaxPriorityFeePerGas != nil {
+		copy(out[0:16], common.LeftPadBytes(op.MaxPriorityFeePerGas.Bytes(), 16))
+	}
+	if op.MaxFeePerGas != nil {
+		copy(out[16:32], common.LeftPadBytes(op.MaxFeePerGas.Bytes(), 16))
+	}
+	return out
+}
+
 func (op *UserOperation) PackForSignature() []byte {
+	accountGasLimits := op.packAccountGasLimits()
+	gasFees := op.packGasFees()
+
+	if len(op.EIP7702Auth) > 0 {
+		args := abi.Arguments{
+			{Name: "sender", Type: addressType},
+			{Name: "nonce", Type: uint256Type},
+			{Name: "hashInitCode", Type: bytes32Type},
+			{Name: "hashCallData", Type: bytes32Type},
+			{Name: "accountGasLimits", Type: bytes32Type},
+			{Name: "preVerificationGas", Type: uint256Type},
+			{Name: "gasFees", Type: bytes32Type},
+			{Name: "hashPaymasterAndData", Type: bytes32Type},
+			{Name: "hashEip7702Auth", Type: bytes32Type},
+		}
+		packed, _ := args.Pack(
+			op.Sender,
+			op.Nonce,
+			crypto.Keccak256Hash(op.assembleInitCode()),
+			crypto.Keccak256Hash(op.CallData),
+			accountGasLimits,
+			op.PreVerificationGas,
+			gasFees,
+			crypto.Keccak256Hash(op.assemblePaymasterAndData()),
+			crypto.Keccak256Hash(op.EIP7702Auth),
+		)
+		return packed
+	}
+
 	args := abi.Arguments{
 		{Name: "sender", Type: addressType},
 		{Name: "nonce", Type: uint256Type},
 		{Name: "hashInitCode", Type: bytes32Type},
 		{Name: "hashCallData", Type: bytes32Type},
-		{Name: "callGasLimit", Type: uint256Type},
-		{Name: "verificationGasLimit", Type: uint256Type},
+		{Name: "accountGasLimits", Type: bytes32Type},
 		{Name: "preVerificationGas", Type: uint256Type},
-		{Name: "maxFeePerGas", Type: uint256Type},
-		{Name: "maxPriorityFeePerGas", Type: uint256Type},
+		{Name: "gasFees", Type: bytes32Type},
 		{Name: "hashPaymasterAndData", Type: bytes32Type},
-		{Name: "hashEip7702Auth", Type: bytes32Type},
 	}
 	packed, _ := args.Pack(
 		op.Sender,
 		op.Nonce,
 		crypto.Keccak256Hash(op.assembleInitCode()),
 		crypto.Keccak256Hash(op.CallData),
-		op.CallGasLimit,
-		op.VerificationGasLimit,
+		accountGasLimits,
 		op.PreVerificationGas,
-		op.MaxFeePerGas,
-		op.MaxPriorityFeePerGas,
+		gasFees,
 		crypto.Keccak256Hash(op.assemblePaymasterAndData()),
-		crypto.Keccak256Hash(op.EIP7702Auth),
 	)
-
 	return packed
 }
 
