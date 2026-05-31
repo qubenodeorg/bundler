@@ -103,26 +103,47 @@
 - [ ] Review current codebase for all v0.6 dependencies
 
 #### Days 2-3: UserOperation Struct Refactor
-- [ ] Update `pkg/userop/object.go`:
-  - Replace `InitCode []byte` with `Factory common.Address` + `FactoryData []byte`
-  - Replace `PaymasterAndData []byte` with `Paymaster common.Address` + `PaymasterData []byte`
-  - Add `PaymasterVerificationGasLimit *big.Int`
-  - Add `PaymasterPostOpGasLimit *big.Int`
-- [ ] Update `UserOpPrimitives` and `UserOpType` ABI types
-- [ ] Update `Pack()` method for new struct
-- [ ] Update `PackForSignature()` for v0.9 hash scheme
-- [ ] Update `GetUserOpHash()` to match EntryPoint v0.9
-- [ ] Update `GetMaxGasAvailable()` (remove 3x multiplier, add paymaster gas)
-- [ ] Update `MarshalJSON()` and `ToMap()` for new fields
-- [ ] Update helper methods: `GetPaymaster()`, `GetFactory()`, `GetFactoryData()`
-- [ ] Update `pkg/userop/parse.go` for new field names and validation
 
-**Deliverable**: Core data model compiles
+**Approach**: Create versioned structs to preserve backward compatibility
+
+- [ ] Create `pkg/userop/v06/object.go`:
+  - Move current v0.6 `UserOperation` struct (keep as-is for backward compat)
+  - Keep `InitCode []byte` and `PaymasterAndData []byte`
+  - Keep v0.6 hash calculation (`verificationGasLimit * 3` for paymasters)
+- [ ] Create `pkg/userop/v09/object.go`:
+  - New v0.9 `UserOperation` struct with:
+    - `Factory common.Address` + `FactoryData []byte`
+    - `Paymaster common.Address` + `PaymasterData []byte`
+    - `PaymasterVerificationGasLimit *big.Int`
+    - `PaymasterPostOpGasLimit *big.Int`
+  - New `EIP7702Auth` field
+  - New `PaymasterSignature` field
+  - v0.9 hash calculation (no 3x multiplier)
+- [ ] Create `pkg/userop/interface.go`:
+  - Define `UserOperationInterface` with common methods
+  - Version-aware factory function: `NewUserOperation(version, data)`
+- [ ] Update `pkg/userop/parse.go`:
+  - Version-aware parsing based on detected EntryPoint version
+  - Parse v0.6 JSON-RPC requests into v06 struct
+  - Parse v0.9 JSON-RPC requests into v09 struct
+  - Support both field naming conventions during transition
+- [ ] Create version-specific ABI types:
+  - `pkg/userop/v06/types.go`: v0.6 `UserOpPrimitives`, `UserOpType`
+  - `pkg/userop/v09/types.go`: v0.9 `UserOpPrimitives`, `UserOpType`
+
+**Deliverable**: Versioned data model compiles, both structs usable
 
 #### Day 4: Version Detection System
+
+**Approach**: Address-based detection (EntryPoint contracts don't expose version())
+
 - [ ] Add `EntryPointVersion` auto-detection:
-  - Query EntryPoint for version via `version()` or `supportsInterface()`
-  - Map known addresses to versions
+  - **Primary**: Map known EntryPoint addresses to versions:
+    - `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` → v0.6
+    - `0x0000000071727De22E5E9d8BAf0edAc6f37da032` → v0.7
+    - `0x4337084d9e255ff0702461cf8895ce9e3b5ff108` → v0.8
+    - `0x433709009B8330FDa32311DF1C2AFA402eD8D009` → v0.9
+  - **Fallback**: Bytecode selector analysis (check for v0.9-specific method selectors like `getCurrentUserOpHash()`)
   - Support explicit `ERC4337_BUNDLER_ENTRYPOINT_VERSION` env var as override
 - [ ] Create version constants: `V0_6`, `V0_7`, `V0_8`, `V0_9`
 - [ ] Add `Version` field to `internal/config/Values`
@@ -132,17 +153,23 @@
 **Deliverable**: Version detection works
 
 #### Days 5-6: EntryPoint Bindings Regeneration
-- [ ] Regenerate `pkg/entrypoint/bindings.go` from v0.9 ABI using `abigen`
-- [ ] Update `Makefile` target `generate-entrypoint-pkg`
-- [ ] Update revert parsing for new error codes (AA20-AA95)
-- [ ] Update `ValidationResult` parsing for new `ReturnInfo` structure
-- [ ] Update `ExecutionResult` parsing
-- [ ] Update `FailedOp` parsing
-- [ ] Update event signatures:
-  - `UserOperationEvent`
-  - `AccountDeployed`
-  - `EIP7702AccountInitialized`
-  - `IgnoredInitCode`
+
+**Approach**: Keep v0.6 bindings, add v0.9 in separate package
+
+- [ ] Keep existing `pkg/entrypoint/bindings.go` (v0.6 bindings untouched)
+- [ ] Create `pkg/entrypoint/v09/bindings.go` from v0.9 ABI using `abigen`
+- [ ] Update `Makefile` target `generate-entrypoint-pkg` to generate both versions
+- [ ] Create version-specific revert parsing:
+  - Keep `pkg/entrypoint/reverts/` for v0.6 error codes
+  - Create `pkg/entrypoint/v09/reverts/` for new error codes (AA20-AA95)
+- [ ] Create version-specific result parsing:
+  - `pkg/entrypoint/v09/reverts/validationresult.go` for new `ReturnInfo` structure
+  - `pkg/entrypoint/v09/reverts/executionresult.go` for updated fields
+  - `pkg/entrypoint/v09/reverts/failedop.go` for new error formats
+- [ ] Create version-specific event signatures:
+  - Keep existing events in `pkg/entrypoint/filter/` (v0.6)
+  - Add `EIP7702AccountInitialized` and `IgnoredInitCode` to `pkg/entrypoint/v09/filter/`
+  - Update `UserOperationEvent` signature in v09 package
 
 **Deliverable**: EntryPoint bindings compile
 
@@ -215,27 +242,31 @@
 **Deliverable**: Tracers work with v0.9
 
 #### Days 13-14: Simulation & Execution
-- [ ] Update `pkg/entrypoint/simulation/simulatevalidation.go`:
-  - Off-chain simulation only
-  - Handle new error codes
-  - Version-aware simulation
-- [ ] Update `pkg/entrypoint/simulation/tracevalidation.go`:
-  - New trace format handling
-- [ ] Update `pkg/entrypoint/execution/simulate.go`:
-  - Pass new UserOperation struct
-  - Handle `executeUserOp()` (v0.7)
-- [ ] Update `pkg/entrypoint/execution/trace.go`:
-  - Execution tracer integration
-- [ ] Update `pkg/entrypoint/methods/handleops.go`:
-  - New UserOperation tuple type
-  - Version-aware method building
-- [ ] Update `pkg/entrypoint/transaction/handleops.go`:
-  - `toAbiType()` mapping for new fields
-  - Version-aware transaction building
-- [ ] Update `pkg/entrypoint/transaction/gas.go`:
-  - Gas estimation for v0.9 struct
 
-**Deliverable**: Simulation and execution compile
+**Approach**: Create v0.9-specific simulation packages, keep v0.6 intact
+
+- [ ] Create `pkg/entrypoint/v09/simulation/simulatevalidation.go`:
+  - Off-chain simulation only (simulateValidation removed from on-chain in v0.7)
+  - Handle new error codes (AA20-AA95)
+  - Accept `userop/v09.UserOperation` struct
+- [ ] Create `pkg/entrypoint/v09/simulation/tracevalidation.go`:
+  - New trace format for v0.9 EntryPoint internals
+- [ ] Create `pkg/entrypoint/v09/execution/simulate.go`:
+  - Pass `userop/v09.UserOperation` struct
+  - Handle `executeUserOp()` (v0.7 feature)
+- [ ] Create `pkg/entrypoint/v09/execution/trace.go`:
+  - Execution tracer integration for v0.9
+- [ ] Create `pkg/entrypoint/v09/methods/handleops.go`:
+  - v0.9 UserOperation tuple type
+  - `toAbiType()` mapping for v09 fields
+- [ ] Create `pkg/entrypoint/v09/transaction/handleops.go`:
+  - Version-aware transaction building
+  - Handle both v0.6 and v0.9 UserOperation structs
+- [ ] Create `pkg/entrypoint/v09/transaction/gas.go`:
+  - Gas estimation for v0.9 struct
+- [ ] Keep existing `pkg/entrypoint/simulation/` and `pkg/entrypoint/execution/` (v0.6) untouched
+
+**Deliverable**: Simulation and execution compile for both versions
 
 ---
 
@@ -423,54 +454,66 @@ if version == "auto":
 
 ## Files Requiring Modification
 
-### Critical (P0)
+### Critical (P0) - New Files
 
 | File | Changes |
 |------|---------|
-| `pkg/userop/object.go` | New struct fields, hash calculation, JSON |
-| `pkg/userop/parse.go` | Parse new fields, validation |
-| `pkg/entrypoint/bindings.go` | Regenerate from v0.9 ABI |
-| `pkg/entrypoint/reverts/*.go` | New error codes |
-| `pkg/gas/estimate.go` | New gas fields, penalty logic |
-| `pkg/gas/overhead.go` | Struct size, costs |
-| `pkg/gas/types.go` | New GasEstimates fields |
-| `pkg/modules/checks/standalone.go` | Version-aware validation |
-| `pkg/modules/checks/initcode.go` | Factory validation |
-| `pkg/modules/checks/paymaster.go` | Paymaster validation |
-| `pkg/modules/checks/verificationgas.go` | Paymaster gas limits |
-| `pkg/modules/checks/gas.go` | Prefund calculation |
+| `pkg/userop/v06/object.go` | Move current v0.6 struct (keep intact) |
+| `pkg/userop/v09/object.go` | **NEW**: v0.9 struct with Factory, Paymaster fields |
+| `pkg/userop/interface.go` | **NEW**: Version-aware interface and factory |
+| `pkg/userop/parse.go` | Version-aware parsing (both v0.6 and v0.9) |
+| `pkg/entrypoint/v09/bindings.go` | **NEW**: v0.9 EntryPoint bindings |
+| `pkg/entrypoint/v09/reverts/*.go` | **NEW**: v0.9 error codes (AA20-AA95) |
+| `pkg/gas/estimate.go` | Version-aware gas estimation |
+| `pkg/gas/overhead.go` | Version-aware struct size calculations |
+| `pkg/gas/types.go` | New GasEstimates fields (both versions) |
+| `pkg/modules/checks/standalone.go` | Version-aware validation switching |
+| `pkg/modules/checks/initcode.go` | Version-aware factory validation |
+| `pkg/modules/checks/paymaster.go` | Version-aware paymaster validation |
+| `pkg/modules/checks/verificationgas.go` | Version-aware gas limit checks |
+| `pkg/modules/checks/gas.go` | Version-aware prefund calculation |
 
-### High (P1)
+### Critical (P0) - Keep As-Is
+
+| File | Status |
+|------|--------|
+| `pkg/userop/object.go` | **KEEP**: v0.6 struct (backward compat) |
+| `pkg/entrypoint/bindings.go` | **KEEP**: v0.6 bindings (backward compat) |
+| `pkg/entrypoint/reverts/*.go` | **KEEP**: v0.6 error codes (backward compat) |
+
+### High (P1) - New Files
 
 | File | Changes |
 |------|---------|
-| `pkg/tracer/*.js` | v0.9 internals, TSTORE/TLOAD |
-| `pkg/tracer/types.go` | New trace structs |
-| `pkg/entrypoint/simulation/*.go` | Off-chain simulation |
-| `pkg/entrypoint/execution/*.go` | New struct, executeUserOp |
-| `pkg/entrypoint/methods/*.go` | New tuple types |
-| `pkg/entrypoint/transaction/*.go` | Version-aware building |
-| `pkg/entrypoint/filter/*.go` | New event formats |
-| `pkg/estimator/gas.go` | New gas estimation logic |
-| `internal/config/values.go` | Version config |
+| `pkg/tracer/v09/*.js` | **NEW**: v0.9 tracer implementations |
+| `pkg/tracer/types.go` | Add v0.9 trace return structs |
+| `pkg/entrypoint/v09/simulation/*.go` | **NEW**: v0.9 off-chain simulation |
+| `pkg/entrypoint/v09/execution/*.go` | **NEW**: v0.9 execution simulation |
+| `pkg/entrypoint/v09/methods/*.go` | **NEW**: v0.9 ABI method definitions |
+| `pkg/entrypoint/v09/transaction/*.go` | **NEW**: v0.9 transaction building |
+| `pkg/entrypoint/v09/filter/*.go` | **NEW**: v0.9 event filtering |
+| `pkg/estimator/gas.go` | Version-aware gas estimation logic |
+| `internal/config/values.go` | Version detection config |
 
 ### Medium (P2)
 
 | File | Changes |
 |------|---------|
-| `pkg/client/client.go` | Version-aware API |
+| `pkg/client/client.go` | Version-aware API handlers |
 | `pkg/client/rpc.go` | Version adapters |
-| `pkg/handlers/payg/handler.go` | Paymaster signatures |
-| `pkg/bundler/bundler.go` | Version-aware batching |
-| `pkg/modules/relay/relayer.go` | Version-aware relay |
-| `pkg/modules/builder/builder.go` | Version-aware bundles |
-| `pkg/mempool/instance.go` | New struct serialization |
+| `pkg/handlers/payg/handler.go` | Paymaster signature support |
+| `pkg/bundler/bundler.go` | Version-aware batch building |
+| `pkg/modules/relay/relayer.go` | Version-aware transaction relay |
+| `pkg/modules/builder/builder.go` | Version-aware bundle building |
+| `pkg/mempool/instance.go` | Version-aware struct serialization |
 
 ### Low (P3)
 
 | File | Changes |
 |------|---------|
 | `docs/*.md` | Documentation updates |
+| `e2e/*` | E2E test updates |
+| `.github/workflows/*.yml` | CI updates |
 | `e2e/*` | E2E test updates |
 | `.github/workflows/*.yml` | CI updates |
 | `README.md` | Version info |
