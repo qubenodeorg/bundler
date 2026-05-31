@@ -49,10 +49,13 @@ func (op *UserOperation) GetFactoryData() []byte {
 }
 
 func (op *UserOperation) assembleInitCode() []byte {
-	if op.Factory == common.HexToAddress("0x") && len(op.FactoryData) == 0 {
+	if op.Factory == (common.Address{}) && len(op.FactoryData) == 0 {
 		return []byte{}
 	}
-	return append(op.Factory.Bytes(), op.FactoryData...)
+	data := make([]byte, 0, 20+len(op.FactoryData))
+	data = append(data, op.Factory.Bytes()...)
+	data = append(data, op.FactoryData...)
+	return data
 }
 
 func (op *UserOperation) assemblePaymasterAndData() []byte {
@@ -79,10 +82,19 @@ func (op *UserOperation) assemblePaymasterAndData() []byte {
 }
 
 func (op *UserOperation) GetMaxGasAvailable() *big.Int {
-	return big.NewInt(0).Add(
+	total := big.NewInt(0).Add(
 		op.VerificationGasLimit,
 		big.NewInt(0).Add(op.PreVerificationGas, op.CallGasLimit),
 	)
+	if op.Paymaster != (common.Address{}) {
+		if op.PaymasterVerificationGasLimit != nil {
+			total.Add(total, op.PaymasterVerificationGasLimit)
+		}
+		if op.PaymasterPostOpGasLimit != nil {
+			total.Add(total, op.PaymasterPostOpGasLimit)
+		}
+	}
+	return total
 }
 
 func (op *UserOperation) GetMaxPrefund() *big.Int {
@@ -232,6 +244,13 @@ func (op *UserOperation) GetUserOpHash(entryPoint common.Address, chainID *big.I
 	)
 }
 
+func encodeBigOrZero(b *big.Int) string {
+	if b == nil {
+		return "0x0"
+	}
+	return hexutil.EncodeBig(b)
+}
+
 func (op *UserOperation) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Sender                       string `json:"sender"`
@@ -257,14 +276,14 @@ func (op *UserOperation) MarshalJSON() ([]byte, error) {
 		Factory:                      op.Factory.String(),
 		FactoryData:                  hexutil.Encode(op.FactoryData),
 		CallData:                     hexutil.Encode(op.CallData),
-		CallGasLimit:                 hexutil.EncodeBig(op.CallGasLimit),
-		VerificationGasLimit:         hexutil.EncodeBig(op.VerificationGasLimit),
-		PreVerificationGas:           hexutil.EncodeBig(op.PreVerificationGas),
-		MaxFeePerGas:                 hexutil.EncodeBig(op.MaxFeePerGas),
-		MaxPriorityFeePerGas:         hexutil.EncodeBig(op.MaxPriorityFeePerGas),
+		CallGasLimit:                 encodeBigOrZero(op.CallGasLimit),
+		VerificationGasLimit:         encodeBigOrZero(op.VerificationGasLimit),
+		PreVerificationGas:           encodeBigOrZero(op.PreVerificationGas),
+		MaxFeePerGas:                 encodeBigOrZero(op.MaxFeePerGas),
+		MaxPriorityFeePerGas:         encodeBigOrZero(op.MaxPriorityFeePerGas),
 		Paymaster:                    op.Paymaster.String(),
-		PaymasterVerificationGasLimit: hexutil.EncodeBig(op.PaymasterVerificationGasLimit),
-		PaymasterPostOpGasLimit:      hexutil.EncodeBig(op.PaymasterPostOpGasLimit),
+		PaymasterVerificationGasLimit: encodeBigOrZero(op.PaymasterVerificationGasLimit),
+		PaymasterPostOpGasLimit:      encodeBigOrZero(op.PaymasterPostOpGasLimit),
 		PaymasterData:                hexutil.Encode(op.PaymasterData),
 		Signature:                    hexutil.Encode(op.Signature),
 		PaymasterSignature:           hexutil.Encode(op.PaymasterSignature),
