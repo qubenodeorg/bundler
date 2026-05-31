@@ -8,6 +8,13 @@ generate-environment:
 generate-entrypoint-pkg:
 	abigen --abi=./abi/entrypoint.json --pkg=entrypoint --out=./pkg/entrypoint/bindings.go
 
+generate-entrypoint-v09-pkg:
+	abigen --abi=./abi/entrypoint.v09.json --pkg=entrypointv09 --out=./pkg/entrypoint/v09/bindings.go
+
+fetch-entrypoint-v09-abi:
+	curl -sL -o /tmp/v0.9.0.zip "https://github.com/eth-infinitism/account-abstraction/archive/refs/tags/v0.9.0.zip" && \
+	unzip -p /tmp/v0.9.0.zip "account-abstraction-0.9.0/deployments/ethereum/EntryPoint.json" > ./abi/entrypoint.v09.json
+
 fetch-wallet:
 	go run ./scripts/fetchwallet
 

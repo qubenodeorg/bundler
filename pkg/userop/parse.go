@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-playground/validator/v10"
 	"github.com/mitchellh/mapstructure"
+	"github.com/zarbanio/bundler/pkg/userop/v09"
 )
 
 var (
@@ -117,4 +118,56 @@ func New(data map[string]any) (*UserOperation, error) {
 	}
 
 	return &op, nil
+}
+
+// decodeV09OpTypes handles field decoding for v0.9 UserOperation struct, including address fields that
+// may be zero (not required for factory/paymaster).
+func decodeV09OpTypes(
+	f reflect.Kind,
+	t reflect.Kind,
+	data interface{}) (interface{}, error) {
+	return decodeOpTypes(f, t, data)
+}
+
+// NewV09 decodes a map into a v0.9 UserOperation and validates all required fields.
+func NewV09(data map[string]any) (*v09.UserOperation, error) {
+	var op v09.UserOperation
+
+	config := &mapstructure.DecoderConfig{
+		DecodeHook: decodeV09OpTypes,
+		Result:     &op,
+		ErrorUnset: true,
+		MatchName:  exactFieldMatch,
+	}
+	decoder, err := mapstructure.NewDecoder(config)
+	if err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(data); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadUserOperationData, err)
+	}
+
+	onlyOnce.Do(func() {
+		validate.RegisterCustomTypeFunc(validateAddressType, common.Address{})
+		validate.RegisterCustomTypeFunc(validateBigIntType, big.Int{})
+	})
+	err = validate.Struct(op)
+	if err != nil {
+		return nil, err
+	}
+
+	return &op, nil
+}
+
+// NewVersioned decodes a map into the appropriate versioned UserOperation based on the version string.
+// Supported versions: "v0.6", "v0.9". If version is empty, it attempts auto-detection from fields.
+func NewVersioned(version string, data map[string]any) (UserOperationInterface, error) {
+	switch version {
+	case "v0.6", "":
+		return New(data)
+	case "v0.9":
+		return NewV09(data)
+	default:
+		return nil, fmt.Errorf("unsupported UserOperation version: %s", version)
+	}
 }
