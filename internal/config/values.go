@@ -86,12 +86,11 @@ func variableNotSetOrIsNil(env string) bool {
 	return !viper.IsSet(env) || viper.GetString(env) == ""
 }
 
-// GetValues returns config for the bundler that has been read in from env vars. See
-// https://docs.stackup.sh/docs/packages/bundler/configure for details.
+// GetValues returns config for the bundler that has been read in from env vars.
 func GetValues() *Values {
 	// Default variables
 	viper.SetDefault("erc4337_bundler_port", 4337)
-	viper.SetDefault("erc4337_bundler_data_directory", "/tmp/stackup_bundler")
+	viper.SetDefault("erc4337_bundler_data_directory", "/tmp/qubenode_bundler")
 	viper.SetDefault("erc4337_bundler_supported_entry_points", "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
 	viper.SetDefault("erc4337_bundler_max_verification_gas", 6000000)
 	viper.SetDefault("erc4337_bundler_max_batch_gas_limit", 18000000)

@@ -13,7 +13,7 @@ RUN go mod download
 COPY . ./
 
 # Build the binary.
-RUN go build -v -o stackup-bundler
+RUN go build -v -o qubenode-bundler
 
 # Use the official Debian slim image for a lean production container.
 # https://hub.docker.com/_/debian
@@ -24,8 +24,8 @@ RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -
     rm -rf /var/lib/apt/lists/*
 
 # Copy the binary to the production image from the builder stage.
-COPY --from=builder /app/stackup-bundler /app/stackup-bundler
+COPY --from=builder /app/qubenode-bundler /app/qubenode-bundler
 
 EXPOSE 4337
 
-CMD ["/app/stackup-bundler", "start", "--mode", "private"]
+CMD ["/app/qubenode-bundler", "start", "--mode", "private"]

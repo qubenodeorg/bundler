@@ -1,4 +1,4 @@
-// Package userop provides the base transaction object used throughout the stackup-bundler.
+// Package userop provides the base transaction object used throughout the qubenode-bundler.
 package userop
 
 import (

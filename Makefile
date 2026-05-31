@@ -18,4 +18,11 @@ dev-searcher-mode:
 	air -c .air.searcher-mode.toml
 
 dev-reset-default-data-dir:
-	rm -rf /tmp/stackup_bundler
+	rm -rf /tmp/qubenode_bundler
+
+build:
+	go build -v -o qubenode-bundler
+
+docs:
+	go install golang.org/x/pkgsite/cmd/pkgsite@latest
+	pkgsite -open .

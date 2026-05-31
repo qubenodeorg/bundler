@@ -4,8 +4,8 @@ tmp_dir = "tmp"
 
 [build]
   args_bin = []
-  bin = ";ERC4337_BUNDLER_GIN_MODE=debug ./tmp/stackup-bundler start --mode private"
-  cmd = "go build -o ./tmp/stackup-bundler main.go"
+  bin = ";ERC4337_BUNDLER_GIN_MODE=debug ./tmp/qubenode-bundler start --mode private"
+  cmd = "go build -o ./tmp/qubenode-bundler main.go"
   delay = 1000
   exclude_dir = ["assets", "tmp", "vendor", "testdata", "e2e"]
   exclude_file = []

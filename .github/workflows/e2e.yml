@@ -90,7 +90,7 @@ jobs:
           yarn install --frozen-lockfile
 
       - name: Build bundler binary
-        run: go build -o ./tmp/stackup-bundler main.go
+        run: go build -o ./tmp/qubenode-bundler main.go
 
       - name: Deploy contracts
         run: |
@@ -100,8 +100,8 @@ jobs:
           cp .env.example .env && \
           yarn deploy:AllTest --network localhost
 
-      - name: Run Stackup Bundler
-        run: ./tmp/stackup-bundler start --mode private &
+      - name: Run Qubenode Bundler
+        run: ./tmp/qubenode-bundler start --mode private &
         env:
           ERC4337_BUNDLER_ETH_CLIENT_URL: http://localhost:8545/
           ERC4337_BUNDLER_DEBUG_MODE: true
