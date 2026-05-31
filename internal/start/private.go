@@ -38,7 +38,7 @@ func PrivateMode() {
 	conf := config.GetValues()
 
 	logr := logger.NewZeroLogr().
-		WithName("stackup_bundler").
+		WithName("qubenode_bundler").
 		WithValues("bundler_mode", "private")
 
 	eoa, err := signer.New(conf.PrivateKey)

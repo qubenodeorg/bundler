@@ -7,7 +7,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "stackup-bundler",
+	Use:   "qubenode-bundler",
 	Short: "ERC-4337 Bundler",
 	Long:  "A modular Go implementation of an ERC-4337 Bundler.",
 }

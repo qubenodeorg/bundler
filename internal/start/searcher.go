@@ -38,7 +38,7 @@ func SearcherMode() {
 	conf := config.GetValues()
 
 	logr := logger.NewZeroLogr().
-		WithName("stackup_bundler").
+		WithName("qubenode_bundler").
 		WithValues("bundler_mode", "searcher")
 
 	eoa, err := signer.New(conf.PrivateKey)

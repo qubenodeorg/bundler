@@ -1,29 +1,47 @@
 ![](https://i.imgur.com/fMnLV0q.png)
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/stackup-wallet/stackup-bundler)
-![Compliance status](https://github.com/zarbanio/bundleractions/workflows/compliance.yml/badge.svg?branch=main)
-![E2E status](https://github.com/zarbanio/bundleractions/workflows/e2e.yml/badge.svg?branch=main)
-![core status](https://github.com/zarbanio/bundleractions/workflows/core.yml/badge.svg?branch=main)
+# Qubenode Bundler
 
-# Getting started
+![Compliance status](https://github.com/zarbanio/bundler/actions/workflows/compliance.yml/badge.svg?branch=main)
+![E2E status](https://github.com/zarbanio/bundler/actions/workflows/e2e.yml/badge.svg?branch=main)
+![core status](https://github.com/zarbanio/bundler/actions/workflows/core.yml/badge.svg?branch=main)
 
-A fast, reliable, and modular Go implementation of an ERC-4337 Bundler.
+A fast, reliable, and modular Go implementation of an ERC-4337 Bundler (v0.6).
 
-# Running an instance
+## Quick Start
 
-See the `Bundler` documentation at [docs.stackup.sh](https://docs.stackup.sh/docs/erc-4337-bundler).
+```bash
+# Build
+make build
 
-# Contributing
+# Generate environment file
+make generate-environment
+
+# Edit .env with your configuration
+
+# Run in private mode
+./qubenode-bundler start --mode private
+```
+
+## Documentation
+
+- [Architecture](./docs/ARCHITECTURE.md) - System architecture and component overview
+- [Data Flow](./docs/DATA_FLOW.md) - UserOperation lifecycle and processing flows
+- [Configuration](./docs/CONFIGURATION.md) - Environment variables and deployment options
+- [API Reference](./docs/API.md) - JSON-RPC endpoints and paymaster API
+- [Modules](./docs/MODULES.md) - Middleware module system guide
+- [Development](./docs/DEVELOPMENT.md) - Developer setup and contribution guide
+- [GoDoc](./docs/GODOC.md) - Auto-generated package documentation
 
 ## Prerequisites
 
 - Go 1.20 or later
-- Access to a node with `debug` API enabled for custom tracing.
+- Access to a node with `debug` API enabled for custom tracing
 
 ## Setup
 
 ```bash
-# Installs https://github.com/cosmtrek/air for live reloading.
+# Installs https://github.com/air-verse/air for live reloading.
 # Runs go mod tidy.
 make install-dev
 
@@ -47,14 +65,30 @@ make dev-private-mode
 If you need to reset the embedded database:
 
 ```bash
-# This will delete the default data directory at /tmp/stackup_bundler
+# This will delete the default data directory at /tmp/qubenode_bundler
 make dev-reset-default-data-dir
 ```
 
-# License
+## Run bundler in `searcher` mode
+
+```bash
+make dev-searcher-mode
+```
+
+## Docker
+
+```bash
+docker build -t qubenode-bundler .
+docker run -e ERC4337_BUNDLER_ETH_CLIENT_URL=... \
+           -e ERC4337_BUNDLER_PRIVATE_KEY=... \
+           -p 4337:4337 \
+           qubenode-bundler
+```
+
+## License
 
 Distributed under the GPL-3.0 License. See [LICENSE](./LICENSE) for more information.
 
-# Contact
+## Support
 
-Feel free to direct any technical related questions to the `dev-hub` channel in the [Stackup Discord](https://discord.gg/VTjJGvMNyW).
+For technical questions and support, please open an issue on GitHub.

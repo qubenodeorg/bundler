@@ -40,7 +40,7 @@ In a separate process, navigate to the [eth-infinitism/account-abstraction](http
 yarn deploy --network localhost
 ```
 
-Next, navigate to the [stackup-wallet/contracts](https://github.com/stackup-wallet/contracts) directory and run the following command to deploy the supporting test contracts:
+Next, navigate to the [qubenode/contracts](https://github.com/qubenode/contracts) directory and run the following command to deploy the supporting test contracts:
 
 ```bash
 yarn deploy:AllTest --network localhost
@@ -64,7 +64,7 @@ yarn run test
 
 ## Using native tracers for faster performance
 
-For better performance, build Geth from source using the [ERC-4337 Execution Clients](https://github.com/stackup-wallet/erc-4337-execution-clients) repository. Run the built geth binary and reset the bundler with the following config:
+For better performance, build Geth from source using the [ERC-4337 Execution Clients](https://github.com/qubenode/erc-4337-execution-clients) repository. Run the built geth binary and reset the bundler with the following config:
 
 ```
 ERC4337_BUNDLER_NATIVE_BUNDLER_COLLECTOR_TRACER=bundlerCollectorTracer

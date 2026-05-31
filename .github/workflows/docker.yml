@@ -29,5 +29,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            stackupwallet/stackup-bundler:latest
-            stackupwallet/stackup-bundler:${{env.RELEASE_VERSION}}
+            qubenode/qubenode-bundler:latest
+            qubenode/qubenode-bundler:${{env.RELEASE_VERSION}}
