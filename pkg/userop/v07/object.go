@@ -54,16 +54,24 @@ func (op *UserOperation) assembleInitCode() []byte {
 }
 
 func (op *UserOperation) assemblePaymasterAndData() []byte {
-	if op.Paymaster == common.HexToAddress("0x") {
+	if op.Paymaster == (common.Address{}) {
 		return []byte{}
 	}
-	data := op.Paymaster.Bytes()
+	data := make([]byte, 0, 20+16+16+len(op.PaymasterData))
+	data = append(data, op.Paymaster.Bytes()...)
+
+	var vGas []byte
 	if op.PaymasterVerificationGasLimit != nil {
-		data = append(data, common.LeftPadBytes(op.PaymasterVerificationGasLimit.Bytes(), 32)...)
+		vGas = op.PaymasterVerificationGasLimit.Bytes()
 	}
+	data = append(data, common.LeftPadBytes(vGas, 16)...)
+
+	var pGas []byte
 	if op.PaymasterPostOpGasLimit != nil {
-		data = append(data, common.LeftPadBytes(op.PaymasterPostOpGasLimit.Bytes(), 32)...)
+		pGas = op.PaymasterPostOpGasLimit.Bytes()
 	}
+	data = append(data, common.LeftPadBytes(pGas, 16)...)
+
 	data = append(data, op.PaymasterData...)
 	return data
 }
