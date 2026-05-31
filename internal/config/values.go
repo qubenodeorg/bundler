@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 type Values struct {
@@ -47,6 +48,9 @@ type Values struct {
 	IsOpStackNetwork   bool
 	IsRIP7212Supported bool
 	IsArbStackNetwork  bool
+
+	// EntryPoint version (auto-detected or explicitly set).
+	EntryPointVersion userop.Version
 
 	// Undocumented variables.
 	DebugMode bool
@@ -91,7 +95,8 @@ func GetValues() *Values {
 	// Default variables
 	viper.SetDefault("erc4337_bundler_port", 4337)
 	viper.SetDefault("erc4337_bundler_data_directory", "/tmp/qubenode_bundler")
-	viper.SetDefault("erc4337_bundler_supported_entry_points", "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
+	viper.SetDefault("erc4337_bundler_supported_entry_points", "0x433709009B8330FDa32311DF1C2AFA402eD8D009")
+	viper.SetDefault("erc4337_bundler_entrypoint_version", "auto")
 	viper.SetDefault("erc4337_bundler_max_verification_gas", 6000000)
 	viper.SetDefault("erc4337_bundler_max_batch_gas_limit", 18000000)
 	viper.SetDefault("erc4337_bundler_max_op_ttl_seconds", 180)
@@ -141,6 +146,7 @@ func GetValues() *Values {
 	_ = viper.BindEnv("erc4337_bundler_is_op_stack_network")
 	_ = viper.BindEnv("erc4337_bundler_is_arb_stack_network")
 	_ = viper.BindEnv("erc4337_bundler_is_rip7212_supported")
+	_ = viper.BindEnv("erc4337_bundler_entrypoint_version")
 	_ = viper.BindEnv("erc4337_bundler_debug_mode")
 	_ = viper.BindEnv("erc4337_bundler_gin_mode")
 
@@ -206,12 +212,29 @@ func GetValues() *Values {
 	isRIP7212Supported := viper.GetBool("erc4337_bundler_is_rip7212_supported")
 	debugMode := viper.GetBool("erc4337_bundler_debug_mode")
 	ginMode := viper.GetString("erc4337_bundler_gin_mode")
+
+	entryPointVersionStr := strings.ToLower(strings.TrimSpace(viper.GetString("erc4337_bundler_entrypoint_version")))
+	var entryPointVersion userop.Version
+	if entryPointVersionStr == "" || entryPointVersionStr == "auto" {
+		if len(supportedEntryPoints) > 0 && supportedEntryPoints[0] != (common.Address{}) {
+			entryPointVersion = userop.DetectVersionFromEntryPoint(supportedEntryPoints[0])
+		} else {
+			entryPointVersion = userop.V0_9
+		}
+	} else {
+		if !userop.IsVersionSupported(entryPointVersionStr) {
+			panic(fmt.Sprintf("Fatal config error: unsupported entrypoint version %q", entryPointVersionStr))
+		}
+		entryPointVersion = userop.Version(entryPointVersionStr)
+	}
+
 	return &Values{
 		PrivateKey:                   privateKey,
 		EthClientUrl:                 ethClientUrl,
 		Port:                         port,
 		DataDirectory:                dataDirectory,
 		SupportedEntryPoints:         supportedEntryPoints,
+		EntryPointVersion:            entryPointVersion,
 		Beneficiary:                  beneficiary,
 		NativeBundlerCollectorTracer: nativeBundlerCollectorTracer,
 		NativeBundlerExecutorTracer:  nativeBundlerExecutorTracer,

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/big"
 	"net/http"
@@ -23,8 +23,6 @@ import (
 )
 
 var (
-	ethUrl                      = "http://localhost:8545"
-	bundlerUrl                  = "http://localhost:4337"
 	paymasterUrl                = "http://localhost:4337"
 	entryPointAddress           = common.HexToAddress("0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789")
 	simpleAccountFactoryAddress = common.HexToAddress("0x9406Cc6185a346906296840746125a0E44976454")
@@ -194,7 +192,7 @@ func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.
 	defer resp.Body.Close()
 
 	// Read and parse the response
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}

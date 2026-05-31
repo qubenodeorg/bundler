@@ -262,7 +262,7 @@ func TestV09NewWithPaymasterSignature(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New failed: %v", err)
 	}
-	if op.PaymasterSignature == nil || len(op.PaymasterSignature) == 0 {
+	if len(op.PaymasterSignature) == 0 {
 		t.Fatal("PaymasterSignature should not be empty")
 	}
 }
