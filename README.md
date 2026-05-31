@@ -1,5 +1,3 @@
-![](https://i.imgur.com/fMnLV0q.png)
-
 # Qubenode Bundler
 
 ![Compliance status](https://github.com/zarbanio/bundler/actions/workflows/compliance.yml/badge.svg?branch=main)
