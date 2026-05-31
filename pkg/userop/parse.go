@@ -16,8 +16,6 @@ import (
 var (
 	validate = validator.New()
 	onlyOnce = sync.Once{}
-
-	ErrBadUserOperationData = errors.New("cannot decode UserOperation")
 )
 
 func exactFieldMatch(mapKey, fieldName string) bool {

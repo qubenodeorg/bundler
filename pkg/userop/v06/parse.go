@@ -70,12 +70,12 @@ func validateAddressType(field reflect.Value) interface{} {
 	if !ok || value == common.HexToAddress("0x") {
 		return nil
 	}
-	return field
+	return value.String()
 }
 
 func validateBigIntType(field reflect.Value) interface{} {
 	value, ok := field.Interface().(big.Int)
-	if !ok || value.Cmp(big.NewInt(0)) == -1 {
+	if !ok || value.Cmp(big.NewInt(0)) < 0 {
 		return nil
 	}
 	return field

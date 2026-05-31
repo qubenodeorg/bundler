@@ -1,6 +1,7 @@
 package userop
 
 import (
+	"errors"
 	"math/big"
 	"strings"
 
@@ -10,6 +11,9 @@ import (
 	"github.com/zarbanio/bundler/pkg/userop/v08"
 	"github.com/zarbanio/bundler/pkg/userop/v09"
 )
+
+// ErrBadUserOperationData is returned when user operation data cannot be decoded.
+var ErrBadUserOperationData = errors.New("cannot decode UserOperation")
 
 // Version represents an ERC-4337 version.
 type Version string

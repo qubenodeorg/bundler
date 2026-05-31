@@ -98,16 +98,16 @@ func decodeOpTypes(
 }
 
 func validateAddressType(field reflect.Value) interface{} {
-	_, ok := field.Interface().(common.Address)
+	value, ok := field.Interface().(common.Address)
 	if !ok {
 		return nil
 	}
-	return field
+	return value.String()
 }
 
 func validateBigIntType(field reflect.Value) interface{} {
 	value, ok := field.Interface().(big.Int)
-	if !ok || value.Cmp(big.NewInt(0)) == -1 {
+	if !ok || value.Cmp(big.NewInt(0)) < 0 {
 		return nil
 	}
 	return field
