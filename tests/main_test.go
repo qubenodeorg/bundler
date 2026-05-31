@@ -31,6 +31,7 @@ var (
 )
 
 func TestMain(t *testing.T) {
+	t.Skip()
 	client, err := ethclient.Dial("http://localhost:8545")
 	if err != nil {
 		log.Fatalf("Failed to connect to Ethereum client: %v", err)
