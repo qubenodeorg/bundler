@@ -213,10 +213,10 @@ func GetValues() *Values {
 	debugMode := viper.GetBool("erc4337_bundler_debug_mode")
 	ginMode := viper.GetString("erc4337_bundler_gin_mode")
 
-	entryPointVersionStr := viper.GetString("erc4337_bundler_entrypoint_version")
+	entryPointVersionStr := strings.ToLower(strings.TrimSpace(viper.GetString("erc4337_bundler_entrypoint_version")))
 	var entryPointVersion userop.Version
-	if entryPointVersionStr == "auto" {
-		if len(supportedEntryPoints) > 0 {
+	if entryPointVersionStr == "" || entryPointVersionStr == "auto" {
+		if len(supportedEntryPoints) > 0 && supportedEntryPoints[0] != (common.Address{}) {
 			entryPointVersion = userop.DetectVersionFromEntryPoint(supportedEntryPoints[0])
 		} else {
 			entryPointVersion = userop.V0_9

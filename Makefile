@@ -20,6 +20,9 @@ dev-searcher-mode:
 dev-reset-default-data-dir:
 	rm -rf /tmp/qubenode_bundler
 
+lint:
+	golangci-lint run ./...
+
 build:
 	go build -v -o qubenode-bundler
 

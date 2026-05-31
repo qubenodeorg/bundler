@@ -15,7 +15,6 @@ var (
 	address, _ = abi.NewType("address", "", nil)
 	uint256, _ = abi.NewType("uint256", "", nil)
 	bytes32, _ = abi.NewType("bytes32", "", nil)
-	bytesT, _  = abi.NewType("bytes", "", nil)
 	maxUint128 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
 
 	// PackedUserOpPrimitives defines the ABI types for PackedUserOperation (on-chain format).

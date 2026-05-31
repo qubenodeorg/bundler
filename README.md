@@ -1,7 +1,5 @@
 # Qubenode Bundler
 
-![Compliance status](https://github.com/zarbanio/bundler/actions/workflows/compliance.yml/badge.svg?branch=main)
-![E2E status](https://github.com/zarbanio/bundler/actions/workflows/e2e.yml/badge.svg?branch=main)
 ![core status](https://github.com/zarbanio/bundler/actions/workflows/core.yml/badge.svg?branch=main)
 
 A fast, reliable, and modular Go implementation of an ERC-4337 Bundler (v0.6).

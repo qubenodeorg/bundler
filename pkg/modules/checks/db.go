@@ -17,17 +17,6 @@ func getCodeHashesKey(userOpHash common.Hash) []byte {
 	return []byte(dbutils.JoinValues(codeHashesPrefix, userOpHash.String()))
 }
 
-func saveCodeHashes(db *badger.DB, userOpHash common.Hash, codeHashes []codeHash) error {
-	return db.Update(func(txn *badger.Txn) error {
-		data, err := json.Marshal(codeHashes)
-		if err != nil {
-			return err
-		}
-
-		return txn.Set(getCodeHashesKey(userOpHash), data)
-	})
-}
-
 func getSavedCodeHashes(db *badger.DB, userOpHash common.Hash) ([]codeHash, error) {
 	var ch []codeHash
 	err := db.View(func(txn *badger.Txn) error {
