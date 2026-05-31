@@ -12,7 +12,7 @@
     "test": "jest --runInBand"
   },
   "dependencies": {
-    "ethers": "^6.13.4",
+    "ethers": "^6.16.0",
     "userop": "^0.3.7"
   },
   "devDependencies": {
