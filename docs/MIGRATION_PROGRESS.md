@@ -25,8 +25,11 @@
 
 - [x] Create version constants: V0_6, V0_7, V0_8, V0_9
 - [x] Add EntryPointVersion auto-detection from address
-- [ ] Add `Version` field to `internal/config/Values`
-- [ ] Update `GetValues()` for auto-detection
+- [x] Add `Version` field to `internal/config/Values`
+- [x] Update `GetValues()` for auto-detection
+- [x] Support `ERC4337_BUNDLER_ENTRYPOINT_VERSION` env var override
+- [x] Update default `SupportedEntryPoints` from v0.6 to v0.9
+- [x] Verified full build passes
 
 ## Day 5-6: EntryPoint Bindings Regeneration
 
