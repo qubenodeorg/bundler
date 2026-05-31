@@ -15,6 +15,7 @@ var (
 	address, _ = abi.NewType("address", "", nil)
 	uint256, _ = abi.NewType("uint256", "", nil)
 	bytes32, _ = abi.NewType("bytes32", "", nil)
+	maxUint128 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
 
 	// PackedUserOpPrimitives defines the ABI types for PackedUserOperation (on-chain format).
 	PackedUserOpPrimitives = []abi.ArgumentMarshaling{
@@ -127,16 +128,16 @@ func (op *UserOperation) GetDynamicGasPrice(basefee *big.Int) *big.Int {
 }
 
 func (op *UserOperation) accountGasLimits() [32]byte {
-	vg := new(big.Int).And(op.VerificationGasLimit, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
-	cg := new(big.Int).And(op.CallGasLimit, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
+	vg := new(big.Int).And(op.VerificationGasLimit, maxUint128)
+	cg := new(big.Int).And(op.CallGasLimit, maxUint128)
 	packed := new(big.Int).Lsh(vg, 128)
 	packed.Or(packed, cg)
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 
 func (op *UserOperation) gasFees() [32]byte {
-	mf := new(big.Int).And(op.MaxFeePerGas, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
-	mp := new(big.Int).And(op.MaxPriorityFeePerGas, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
+	mf := new(big.Int).And(op.MaxFeePerGas, maxUint128)
+	mp := new(big.Int).And(op.MaxPriorityFeePerGas, maxUint128)
 	packed := new(big.Int).Lsh(mf, 128)
 	packed.Or(packed, mp)
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
@@ -147,8 +148,8 @@ func (op *UserOperation) packPaymasterAndData() []byte {
 		return []byte{}
 	}
 	data := op.Paymaster.Bytes()
-	pvg := new(big.Int).And(op.PaymasterVerificationGasLimit, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
-	ppg := new(big.Int).And(op.PaymasterPostOpGasLimit, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1)))
+	pvg := new(big.Int).And(op.PaymasterVerificationGasLimit, maxUint128)
+	ppg := new(big.Int).And(op.PaymasterPostOpGasLimit, maxUint128)
 	packed := new(big.Int).Lsh(pvg, 128)
 	packed.Or(packed, ppg)
 	data = append(data, common.LeftPadBytes(packed.Bytes(), 32)...)
@@ -192,9 +193,10 @@ func (op *UserOperation) Pack() []byte {
 		op.Signature,
 	})
 
-	enc := hexutil.Encode(packed)
-	enc = "0x" + enc[66:]
-	return hexutil.MustDecode(enc)
+	if len(packed) < 32 {
+		return []byte{}
+	}
+	return packed[32:]
 }
 
 // PackForSignature returns a minimal message for userOpHash computation.

@@ -32,7 +32,7 @@ func decodeOpTypes(
 		return common.HexToAddress(data.(string)), nil
 	}
 
-	if f.Kind() == reflect.String && t.Kind() == reflect.Struct {
+	if f.Kind() == reflect.String && t == reflect.TypeOf(big.Int{}) {
 		n := new(big.Int)
 		n, ok := n.SetString(data.(string), 0)
 		if !ok {
@@ -41,7 +41,7 @@ func decodeOpTypes(
 		return n, nil
 	}
 
-	if f.Kind() == reflect.Float64 && t.Kind() == reflect.Struct {
+	if f.Kind() == reflect.Float64 && t == reflect.TypeOf(big.Int{}) {
 		n, ok := data.(float64)
 		if !ok {
 			return nil, errors.New("bigInt conversion failed")

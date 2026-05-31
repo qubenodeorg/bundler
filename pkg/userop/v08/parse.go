@@ -32,7 +32,7 @@ func decodeOpTypes(
 		return common.HexToAddress(data.(string)), nil
 	}
 
-	if f.Kind() == reflect.String && t.Kind() == reflect.Struct {
+	if f.Kind() == reflect.String && t == reflect.TypeOf(big.Int{}) {
 		n := new(big.Int)
 		n, ok := n.SetString(data.(string), 0)
 		if !ok {
@@ -41,7 +41,7 @@ func decodeOpTypes(
 		return n, nil
 	}
 
-	if f.Kind() == reflect.Float64 && t.Kind() == reflect.Struct {
+	if f.Kind() == reflect.Float64 && t == reflect.TypeOf(big.Int{}) {
 		n, ok := data.(float64)
 		if !ok {
 			return nil, errors.New("bigInt conversion failed")
@@ -60,38 +60,6 @@ func decodeOpTypes(
 			return nil, err
 		}
 		return b, nil
-	}
-
-	if f.Kind() == reflect.Map && t == reflect.TypeOf(&Authorization{}) {
-		// Decode EIP7702Auth map into Authorization struct
-		m, ok := data.(map[string]interface{})
-		if !ok {
-			return data, nil
-		}
-		auth := &Authorization{}
-		if chainId, ok := m["chainId"].(string); ok {
-			n := new(big.Int)
-			auth.ChainID, _ = n.SetString(chainId, 0)
-		}
-		if addr, ok := m["address"].(string); ok {
-			auth.Address = common.HexToAddress(addr)
-		}
-		if nonce, ok := m["nonce"].(string); ok {
-			n := new(big.Int)
-			auth.Nonce, _ = n.SetString(nonce, 0)
-		}
-		if yParity, ok := m["yParity"].(float64); ok {
-			auth.YParity = uint8(yParity)
-		}
-		if r, ok := m["r"].(string); ok {
-			n := new(big.Int)
-			auth.R, _ = n.SetString(r, 0)
-		}
-		if s, ok := m["s"].(string); ok {
-			n := new(big.Int)
-			auth.S, _ = n.SetString(s, 0)
-		}
-		return auth, nil
 	}
 
 	return data, nil

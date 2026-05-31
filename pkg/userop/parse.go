@@ -23,16 +23,16 @@ func exactFieldMatch(mapKey, fieldName string) bool {
 }
 
 func decodeOpTypes(
-	f reflect.Kind,
-	t reflect.Kind,
+	f reflect.Type,
+	t reflect.Type,
 	data interface{}) (interface{}, error) {
 	// String to common.Address conversion
-	if f == reflect.String && t == reflect.Array {
+	if f.Kind() == reflect.String && t.Kind() == reflect.Array {
 		return common.HexToAddress(data.(string)), nil
 	}
 
 	// String to big.Int conversion
-	if f == reflect.String && t == reflect.Struct {
+	if f.Kind() == reflect.String && t == reflect.TypeOf(big.Int{}) {
 		n := new(big.Int)
 		n, ok := n.SetString(data.(string), 0)
 		if !ok {
@@ -42,7 +42,7 @@ func decodeOpTypes(
 	}
 
 	// Float64 to big.Int conversion
-	if f == reflect.Float64 && t == reflect.Struct {
+	if f.Kind() == reflect.Float64 && t == reflect.TypeOf(big.Int{}) {
 		n, ok := data.(float64)
 		if !ok {
 			return nil, errors.New("bigInt conversion failed")
@@ -51,7 +51,7 @@ func decodeOpTypes(
 	}
 
 	// String to []byte conversion
-	if f == reflect.String && t == reflect.Slice {
+	if f.Kind() == reflect.String && t.Kind() == reflect.Slice {
 		byteStr := data.(string)
 		if len(byteStr) < 2 || byteStr[:2] != "0x" {
 			return nil, errors.New("not byte string")
