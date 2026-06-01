@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -75,7 +76,8 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
 		return nil, err
 	}
-	callTrace, err := ProcessBundlerExecution(&call)
+	epAddr := strings.ToLower("0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789")
+	callTrace, err := ProcessBundlerExecution(&call, epAddr)
 	if err != nil {
 		return nil, err
 	}

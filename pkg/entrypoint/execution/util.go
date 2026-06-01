@@ -36,8 +36,8 @@ type Call struct {
 }
 
 // ProcessBundlerExecution processes the JSON input and returns BundlerExecutionReturn
-func ProcessBundlerExecution(call *Call) (*tracer.BundlerExecutionReturn, error) {
-	entryPointAddress := strings.ToLower("0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789")
+func ProcessBundlerExecution(call *Call, entryPointAddress string) (*tracer.BundlerExecutionReturn, error) {
+	entryPointAddress = strings.ToLower(entryPointAddress)
 	// Start traversal
 	context := &CallContext{
 		IsValidationPhase: false,

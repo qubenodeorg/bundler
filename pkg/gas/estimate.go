@@ -1,14 +1,19 @@
 package gas
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/zarbanio/bundler/pkg/entrypoint/execution"
+	v06exec "github.com/zarbanio/bundler/pkg/entrypoint/execution"
+	v07exec "github.com/zarbanio/bundler/pkg/entrypoint/v07/execution"
+	v08exec "github.com/zarbanio/bundler/pkg/entrypoint/v08/execution"
+	v09exec "github.com/zarbanio/bundler/pkg/entrypoint/v09/execution"
 	"github.com/zarbanio/bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/tracer"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -52,6 +57,181 @@ func isExecutionReverted(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "execution reverted")
+}
+
+func readBigStr(data map[string]any, key string) *big.Int {
+	v, ok := data[key].(string)
+	if !ok {
+		return big.NewInt(0)
+	}
+	n := new(big.Int)
+	n.SetString(v, 0)
+	return n
+}
+
+type EstimateInput struct {
+	Rpc         *rpc.Client
+	EntryPoint  common.Address
+	Op          userop.UserOperationInterface
+	Sos         state.OverrideSet
+	Ov          *Overhead
+	ChainID     *big.Int
+	MaxGasLimit *big.Int
+	Tracer      string
+	Version     userop.Version
+
+	attempts int64
+	lastVGL  int64
+}
+
+func retryEstimateGas(err error, vgl int64, in *EstimateInput) (uint64, uint64, error) {
+	if isValidationOOG(err) && in.attempts < maxRetries {
+		return EstimateGas(&EstimateInput{
+			Rpc:         in.Rpc,
+			EntryPoint:  in.EntryPoint,
+			Op:          in.Op,
+			Sos:         in.Sos,
+			Ov:          in.Ov,
+			ChainID:     in.ChainID,
+			MaxGasLimit: in.MaxGasLimit,
+			Tracer:      in.Tracer,
+			Version:     in.Version,
+			attempts:    in.attempts + 1,
+			lastVGL:     vgl,
+		})
+	}
+	return 0, 0, err
+}
+
+func simulateHandleOp(in *EstimateInput, op userop.UserOperationInterface, sos state.OverrideSet) error {
+	switch in.Version {
+	case userop.V0_6:
+		v06op, ok := op.(*userop.UserOperation)
+		if !ok {
+			var err error
+			v06op, err = ConvertToV06(op)
+			if err != nil {
+				return err
+			}
+		}
+		_, err := v06exec.SimulateHandleOp(&v06exec.SimulateInput{
+			Rpc:        in.Rpc,
+			EntryPoint: in.EntryPoint,
+			Op:         v06op,
+			Sos:        sos,
+			ChainID:    in.ChainID,
+		})
+		return err
+	case userop.V0_7:
+		return v07exec.SimulateHandleOp(&v07exec.SimulateInput{
+			Rpc:        in.Rpc,
+			EntryPoint: in.EntryPoint,
+			Op:         op,
+			Sos:        sos,
+			ChainID:    in.ChainID,
+		})
+	case userop.V0_8:
+		return v08exec.SimulateHandleOp(&v08exec.SimulateInput{
+			Rpc:        in.Rpc,
+			EntryPoint: in.EntryPoint,
+			Op:         op,
+			Sos:        sos,
+			ChainID:    in.ChainID,
+		})
+	case userop.V0_9:
+		return v09exec.SimulateHandleOp(&v09exec.SimulateInput{
+			Rpc:        in.Rpc,
+			EntryPoint: in.EntryPoint,
+			Op:         op,
+			Sos:        sos,
+			ChainID:    in.ChainID,
+		})
+	default:
+		return fmt.Errorf("unsupported version: %s", in.Version)
+	}
+}
+
+func traceSimulateHandleOp(in *EstimateInput, op userop.UserOperationInterface, sos state.OverrideSet, traceFeeCap *big.Int) (*tracer.BundlerExecutionReturn, error) {
+	switch in.Version {
+	case userop.V0_6:
+		v06op, ok := op.(*userop.UserOperation)
+		if !ok {
+			var err error
+			v06op, err = ConvertToV06(op)
+			if err != nil {
+				return nil, err
+			}
+		}
+		out, err := v06exec.TraceSimulateHandleOp(&v06exec.TraceInput{
+			Rpc:         in.Rpc,
+			EntryPoint:  in.EntryPoint,
+			Op:          v06op,
+			Sos:         sos,
+			ChainID:     in.ChainID,
+			TraceFeeCap: traceFeeCap,
+			Tracer:      in.Tracer,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	case userop.V0_7:
+		out, err := v07exec.TraceSimulateHandleOp(&v07exec.TraceInput{
+			Rpc:         in.Rpc,
+			EntryPoint:  in.EntryPoint,
+			Op:          op,
+			Sos:         sos,
+			ChainID:     in.ChainID,
+			TraceFeeCap: traceFeeCap,
+			Tracer:      in.Tracer,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	case userop.V0_8:
+		out, err := v08exec.TraceSimulateHandleOp(&v08exec.TraceInput{
+			Rpc:         in.Rpc,
+			EntryPoint:  in.EntryPoint,
+			Op:          op,
+			Sos:         sos,
+			ChainID:     in.ChainID,
+			TraceFeeCap: traceFeeCap,
+			Tracer:      in.Tracer,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	case userop.V0_9:
+		out, err := v09exec.TraceSimulateHandleOp(&v09exec.TraceInput{
+			Rpc:         in.Rpc,
+			EntryPoint:  in.EntryPoint,
+			Op:          op,
+			Sos:         sos,
+			ChainID:     in.ChainID,
+			TraceFeeCap: traceFeeCap,
+			Tracer:      in.Tracer,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	default:
+		return nil, fmt.Errorf("unsupported version: %s", in.Version)
+	}
+}
+
+// createOp creates a new UserOperation from the data map for the given version.
+func createOp(data map[string]any, version userop.Version) (userop.UserOperationInterface, error) {
+	if version == userop.V0_6 {
+		return userop.New(data)
+	}
+	vop, err := userop.NewUserOperation(version, data)
+	if err != nil {
+		return nil, err
+	}
+	return vop.Op, nil
 }
 
 // ConvertToV06 converts a versioned UserOperation (v0.7+) to the v0.6 UserOperation format
@@ -106,48 +286,9 @@ func ConvertToV06(op userop.UserOperationInterface) (*userop.UserOperation, erro
 	return userop.New(data)
 }
 
-type EstimateInput struct {
-	Rpc         *rpc.Client
-	EntryPoint  common.Address
-	Op          userop.UserOperationInterface
-	Sos         state.OverrideSet
-	Ov          *Overhead
-	ChainID     *big.Int
-	MaxGasLimit *big.Int
-	Tracer      string
-	Version     userop.Version
-
-	attempts int64
-	lastVGL  int64
-}
-
-// retryEstimateGas will recursively call estimateGas if execution has caused VGL to be under estimated. This
-// can occur for edge cases where a paymaster's postOp > gas required during verification or if verification
-// has a dependency on CGL. Reset the estimate with a higher buffer on VGL.
-func retryEstimateGas(err error, vgl int64, in *EstimateInput) (uint64, uint64, error) {
-	if isValidationOOG(err) && in.attempts < maxRetries {
-		return EstimateGas(&EstimateInput{
-			Rpc:         in.Rpc,
-			EntryPoint:  in.EntryPoint,
-			Op:          in.Op,
-			Sos:         in.Sos,
-			Ov:          in.Ov,
-			ChainID:     in.ChainID,
-			MaxGasLimit: in.MaxGasLimit,
-			Tracer:      in.Tracer,
-			attempts:    in.attempts + 1,
-			lastVGL:     vgl,
-		})
-	}
-	return 0, 0, err
-}
-
-// EstimateGas uses the simulateHandleOp method on the EntryPoint to derive an estimate for
-// verificationGasLimit and callGasLimit.
-//
-// Note: For v0.7+ UserOperations, the input Op is converted to v0.6 format for simulation since
-// the v0.6 execution packages are used. This is a temporary limitation until v0.7+ execution
-// simulation packages are available (see Days 5-6 of the migration roadmap).
+// EstimateGas derives an estimate for verificationGasLimit and callGasLimit by simulating
+// the user operation against the EntryPoint contract. It dispatches to version-specific
+// execution simulation packages (v0.6, v0.7, v0.8, v0.9).
 func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err error) {
 	data, err := in.Op.ToMap()
 	if err != nil {
@@ -174,17 +315,11 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 		m := (l + r) / 2
 
 		data["verificationGasLimit"] = hexutil.EncodeBig(big.NewInt(int64(m)))
-		simOp, err := userop.New(data)
+		simOp, err := createOp(data, in.Version)
 		if err != nil {
 			return 0, 0, err
 		}
-		_, err = execution.SimulateHandleOp(&execution.SimulateInput{
-			Rpc:        in.Rpc,
-			EntryPoint: in.EntryPoint,
-			Op:         simOp,
-			Sos:        sosCpy,
-			ChainID:    in.ChainID,
-		})
+		err = simulateHandleOp(in, simOp, sosCpy)
 		simErr = err
 		if err == nil {
 			r = m - 1
@@ -210,25 +345,17 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 	data["maxFeePerGas"] = hexutil.EncodeBig(big.NewInt(0))
 	data["maxPriorityFeePerGas"] = hexutil.EncodeBig(big.NewInt(0))
 	data["callGasLimit"] = hexutil.EncodeBig(in.MaxGasLimit)
-	simOp, err := userop.New(data)
+	simOp, err := createOp(data, in.Version)
 	if err != nil {
 		return 0, 0, err
 	}
-	out, err := execution.TraceSimulateHandleOp(&execution.TraceInput{
-		Rpc:         in.Rpc,
-		EntryPoint:  in.EntryPoint,
-		Op:          simOp,
-		Sos:         in.Sos,
-		ChainID:     in.ChainID,
-		TraceFeeCap: in.Op.GetMaxFeePerGas(),
-		Tracer:      in.Tracer,
-	})
+	out, err := traceSimulateHandleOp(in, simOp, in.Sos, in.Op.GetMaxFeePerGas())
 	if err != nil {
 		return retryEstimateGas(err, f, in)
 	}
 
-	vgl := simOp.VerificationGasLimit
-	cgl := big.NewInt(int64(out.Trace.ExecutionGasLimit))
+	vgl := readBigStr(data, "verificationGasLimit")
+	cgl := big.NewInt(int64(out.ExecutionGasLimit))
 	if cgl.Cmp(in.Ov.NonZeroValueCall()) < 0 {
 		cgl = in.Ov.NonZeroValueCall()
 	}
@@ -238,19 +365,12 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 	data["maxPriorityFeePerGas"] = hexutil.EncodeBig(in.Op.GetMaxFeePerGas())
 	data["verificationGasLimit"] = hexutil.EncodeBig(vgl)
 	data["callGasLimit"] = hexutil.EncodeBig(cgl)
-	simOp, err = userop.New(data)
+	simOp, err = createOp(data, in.Version)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	_, err = execution.TraceSimulateHandleOp(&execution.TraceInput{
-		Rpc:        in.Rpc,
-		EntryPoint: in.EntryPoint,
-		Op:         simOp,
-		Sos:        sosCpy,
-		ChainID:    in.ChainID,
-		Tracer:     in.Tracer,
-	})
+	_, err = traceSimulateHandleOp(in, simOp, sosCpy, nil)
 	if err != nil {
 		if isExecutionOOG(err) || isExecutionReverted(err) {
 			l := cgl.Int64()
@@ -261,18 +381,11 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 				m := (l + r) / 2
 
 				data["callGasLimit"] = hexutil.EncodeBig(big.NewInt(int64(m)))
-				simOp, err := userop.New(data)
+				simOp, err := createOp(data, in.Version)
 				if err != nil {
 					return 0, 0, err
 				}
-				_, err = execution.TraceSimulateHandleOp(&execution.TraceInput{
-					Rpc:        in.Rpc,
-					EntryPoint: in.EntryPoint,
-					Op:         simOp,
-					Sos:        sosCpy,
-					ChainID:    in.ChainID,
-					Tracer:     in.Tracer,
-				})
+				_, err = traceSimulateHandleOp(in, simOp, sosCpy, nil)
 				simErr = err
 				if err == nil {
 					r = m - 1
@@ -290,11 +403,9 @@ func EstimateGas(in *EstimateInput) (verificationGas uint64, callGas uint64, err
 			if f == 0 {
 				return 0, 0, simErr
 			}
-			return simOp.VerificationGasLimit.Uint64(), big.NewInt(f).Uint64(), nil
+			return readBigStr(data, "verificationGasLimit").Uint64(), big.NewInt(f).Uint64(), nil
 		}
-		return retryEstimateGas(err, simOp.VerificationGasLimit.Int64(), in)
+		return retryEstimateGas(err, readBigStr(data, "verificationGasLimit").Int64(), in)
 	}
-	return simOp.VerificationGasLimit.Uint64(), simOp.CallGasLimit.Uint64(), nil
+	return readBigStr(data, "verificationGasLimit").Uint64(), readBigStr(data, "callGasLimit").Uint64(), nil
 }
-
-
