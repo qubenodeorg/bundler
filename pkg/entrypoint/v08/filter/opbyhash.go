@@ -36,6 +36,8 @@ func GetUserOperationByHash(
 		return nil, err
 	}
 
+	defer it.Close()
+
 	if it.Next() {
 		receipt, err := eth.TransactionReceipt(context.Background(), it.Event.Raw.TxHash)
 		if err != nil {

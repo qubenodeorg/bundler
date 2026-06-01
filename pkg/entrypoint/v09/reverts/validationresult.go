@@ -73,7 +73,7 @@ func NewValidationResult(err error) (*ValidationResultRevert, error) {
 	}
 
 	sim := validationResult()
-	revert, err := sim.Unpack(common.Hex2Bytes(data[2:]))
+	revert, err := sim.Unpack(common.FromHex(data))
 	if err != nil {
 		return nil, fmt.Errorf("validationResult: %s", err)
 	}

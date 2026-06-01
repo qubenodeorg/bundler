@@ -46,7 +46,7 @@ func NewExecutionResult(err error) (*ExecutionResultRevert, error) {
 	}
 
 	sim := executionResult()
-	revert, err := sim.Unpack(common.Hex2Bytes(data[2:]))
+	revert, err := sim.Unpack(common.FromHex(data))
 	if err != nil {
 		return nil, fmt.Errorf("executionResult: %s", err)
 	}

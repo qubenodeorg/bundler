@@ -51,15 +51,15 @@ func unpackPackedOps(data []byte) ([]packedUserOp, error) {
 	}
 
 	opsRaw, ok := unpacked[0].([]struct {
-		Sender             common.Address `json:"sender"`
-		Nonce              *big.Int       `json:"nonce"`
-		InitCode           []byte         `json:"initCode"`
-		CallData           []byte         `json:"callData"`
-		AccountGasLimits   [32]byte       `json:"accountGasLimits"`
-		PreVerificationGas *big.Int       `json:"preVerificationGas"`
-		GasFees            [32]byte       `json:"gasFees"`
-		PaymasterAndData   []byte         `json:"paymasterAndData"`
-		Signature          []byte         `json:"signature"`
+		Sender             common.Address
+		Nonce              *big.Int
+		InitCode           []byte
+		CallData           []byte
+		AccountGasLimits   [32]byte
+		PreVerificationGas *big.Int
+		GasFees            [32]byte
+		PaymasterAndData   []byte
+		Signature          []byte
 	})
 	if !ok {
 		return nil, fmt.Errorf("unpackPackedOps: cannot assert type")

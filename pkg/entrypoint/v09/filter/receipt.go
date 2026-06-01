@@ -52,6 +52,8 @@ func GetUserOperationReceipt(
 		return nil, err
 	}
 
+	defer it.Close()
+
 	if it.Next() {
 		receipt, err := eth.TransactionReceipt(context.Background(), it.Event.Raw.TxHash)
 		if err != nil {
@@ -68,6 +70,11 @@ func GetUserOperationReceipt(
 			return nil, err
 		}
 
+		effectiveGasPrice := receipt.EffectiveGasPrice
+		if effectiveGasPrice == nil || effectiveGasPrice.Sign() == 0 {
+			effectiveGasPrice = tx.GasPrice()
+		}
+
 		txnReceipt := &parsedTransaction{
 			BlockHash:         receipt.BlockHash,
 			BlockNumber:       hexutil.EncodeBig(receipt.BlockNumber),
@@ -78,7 +85,7 @@ func GetUserOperationReceipt(
 			LogsBloom:         receipt.Bloom,
 			TransactionHash:   receipt.TxHash,
 			TransactionIndex:  hexutil.EncodeBig(big.NewInt(0).SetUint64(uint64(receipt.TransactionIndex))),
-			EffectiveGasPrice: hexutil.EncodeBig(tx.GasPrice()),
+			EffectiveGasPrice: hexutil.EncodeBig(effectiveGasPrice),
 		}
 		return &UserOperationReceipt{
 			UserOpHash:    it.Event.UserOpHash,

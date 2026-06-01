@@ -39,7 +39,7 @@ func NewPostOpReverted(err error) (*PostOpRevertedRevert, error) {
 	}
 
 	postOp := postOpReverted()
-	revert, err := postOp.Unpack(common.Hex2Bytes(data[2:]))
+	revert, err := postOp.Unpack(common.FromHex(data))
 	if err != nil {
 		return nil, fmt.Errorf("postOpReverted: %s", err)
 	}

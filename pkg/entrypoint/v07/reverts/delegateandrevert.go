@@ -42,7 +42,7 @@ func NewDelegateAndRevert(err error) (*DelegateAndRevertRevert, error) {
 	}
 
 	dar := delegateAndRevert()
-	revert, err := dar.Unpack(common.Hex2Bytes(data[2:]))
+	revert, err := dar.Unpack(common.FromHex(data))
 	if err != nil {
 		return nil, fmt.Errorf("delegateAndRevert: %s", err)
 	}

@@ -46,7 +46,7 @@ func NewFailedOpWithRevert(err error) (*FailedOpWithRevertRevert, error) {
 	}
 
 	failedOp := failedOpWithRevert()
-	revert, err := failedOp.Unpack(common.Hex2Bytes(data[2:]))
+	revert, err := failedOp.Unpack(common.FromHex(data))
 	if err != nil {
 		return nil, fmt.Errorf("failedOpWithRevert: %s", err)
 	}
