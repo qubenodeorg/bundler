@@ -40,11 +40,16 @@
 
 ## Day 7: Gas Model Foundation
 
-- [ ] Update `pkg/gas/types.go` with new fields
-- [ ] Update `pkg/gas/estimate.go` for version-aware estimation
-- [ ] Update `pkg/gas/overhead.go` for new struct sizes
-- [ ] Implement 10% unused gas penalty (v0.7)
-- [ ] Implement 40,000 gas penalty threshold (v0.8)
+- [x] Update `pkg/gas/types.go` with new fields (PaymasterVerificationGasLimit, PaymasterPostOpGasLimit)
+- [x] Update `pkg/gas/estimate.go` for version-aware estimation (interface support, ConvertToV06 helper, v0.9 error codes)
+- [x] Update `pkg/gas/overhead.go` for version-aware overhead (UserOperationInterface, version-routed sanitization)
+- [x] Implement 10% unused gas penalty (v0.7) — `CalcUnusedGasPenalty()`, `SetUnusedGasPenaltyPercent()`
+- [x] Implement 40,000 gas penalty threshold (v0.8) — `SetGasPenaltyThreshold()`, integrated into penalty calc
+- [x] Add `GetSender()` and `GetMaxFeePerGas()` to `UserOperationInterface` (all 4 version packages)
+- [x] Update `CalcPreVerificationGasFunc` type to use `UserOperationInterface`
+- [x] Add version-specific Overhead constructors: `NewDefaultOverheadV07()`, `V08()`, `V09()`
+- [x] Write unit tests: types_test.go (4 tests), overhead_test.go (30+ tests), estimate_test.go (20+ tests), pvg_test.go (3 tests)
+- [x] Coverage: non-RPC functions >90%, RPC-dependent functions (EstimateGas, Arbitrum/Optimism PVG) need RPC connection
 
 ## Week 2: Validation & Simulation (Days 8-14)
 

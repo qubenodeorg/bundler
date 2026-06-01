@@ -23,12 +23,19 @@ import (
 
 // CalcPreVerificationGasFunc defines an interface for a function to calculate PVG given a userOp and a static
 // value. The static input is the value derived from the default overheads.
-type CalcPreVerificationGasFunc = func(op *userop.UserOperation, static *big.Int) (*big.Int, error)
+type CalcPreVerificationGasFunc = func(op userop.UserOperationInterface, static *big.Int) (*big.Int, error)
 
 func calcPVGFuncNoop() CalcPreVerificationGasFunc {
-	return func(op *userop.UserOperation, static *big.Int) (*big.Int, error) {
+	return func(op userop.UserOperationInterface, static *big.Int) (*big.Int, error) {
 		return nil, nil
 	}
+}
+
+func fieldToHexStr(data map[string]any, key string) string {
+	if v, ok := data[key].(string); ok {
+		return v
+	}
+	return "0x"
 }
 
 // CalcArbitrumPVGWithEthClient uses Arbitrum's NodeInterface precompile to get an estimate for
@@ -40,15 +47,26 @@ func CalcArbitrumPVGWithEthClient(
 ) CalcPreVerificationGasFunc {
 	pk, _ := crypto.GenerateKey()
 	dummy, _ := signer.New(hexutil.Encode(crypto.FromECDSA(pk))[2:])
-	return func(op *userop.UserOperation, static *big.Int) (*big.Int, error) {
-		// Sanitize paymasterAndData.
-		// TODO: Figure out why variability in this field is causing Arbitrum's precompile to return different
-		// values.
+	return func(op userop.UserOperationInterface, static *big.Int) (*big.Int, error) {
 		data, err := op.ToMap()
 		if err != nil {
 			return nil, err
 		}
-		data["paymasterAndData"] = hexutil.Encode(bytes.Repeat([]byte{1}, len(op.PaymasterAndData)))
+
+		pmHex := fieldToHexStr(data, "paymasterAndData")
+		if pmHex == "0x" {
+			pmHex = fieldToHexStr(data, "paymasterData")
+		}
+		pmBytes, decErr := hexutil.Decode(pmHex)
+		if decErr != nil {
+			pmBytes = []byte{1}
+		}
+		pmLen := len(pmBytes)
+		if pmLen < 1 {
+			pmLen = 1
+		}
+		data["paymasterAndData"] = hexutil.Encode(bytes.Repeat([]byte{1}, pmLen))
+
 		tmp, err := userop.New(data)
 		if err != nil {
 			return nil, err
@@ -63,10 +81,12 @@ func CalcArbitrumPVGWithEthClient(
 			return nil, err
 		}
 
-		// Encode function data for gasEstimateL1Component
 		create := false
-		if tmp.Nonce.Cmp(common.Big0) == 0 {
-			create = true
+		if nonceStr, ok := data["nonce"].(string); ok {
+			nonce, nonceErr := hexutil.DecodeBig(nonceStr)
+			if nonceErr == nil && nonce.Cmp(common.Big0) == 0 {
+				create = true
+			}
 		}
 		ge, err := nodeinterface.GasEstimateL1ComponentMethod.Inputs.Pack(
 			entryPoint,
@@ -109,7 +129,12 @@ func CalcOptimismPVGWithEthClient(
 ) CalcPreVerificationGasFunc {
 	pk, _ := crypto.GenerateKey()
 	dummy, _ := signer.New(hexutil.Encode(crypto.FromECDSA(pk))[2:])
-	return func(op *userop.UserOperation, static *big.Int) (*big.Int, error) {
+	return func(op userop.UserOperationInterface, static *big.Int) (*big.Int, error) {
+		v06Op, err := ConvertToV06(op)
+		if err != nil {
+			return nil, err
+		}
+
 		// Create Raw HandleOps Transaction
 		eth := ethclient.NewClient(rpc)
 		head, err := eth.HeaderByNumber(context.Background(), nil)
@@ -125,7 +150,7 @@ func CalcOptimismPVGWithEthClient(
 			Eth:         eth,
 			ChainID:     chainID,
 			EntryPoint:  entryPoint,
-			Batch:       []*userop.UserOperation{op},
+			Batch:       []*userop.UserOperation{v06Op},
 			Beneficiary: dummy.Address,
 			BaseFee:     head.BaseFee,
 			Tip:         tip,
@@ -137,11 +162,12 @@ func CalcOptimismPVGWithEthClient(
 		}
 
 		// Encode function data for GetL1Fee
-		data, err := hexutil.Decode(transaction.ToRawTxHex(tx))
+		rawHex := transaction.ToRawTxHex(tx)
+		txData, err := hexutil.Decode(rawHex)
 		if err != nil {
 			return nil, err
 		}
-		ge, err := gaspriceoracle.GetL1FeeMethod.Inputs.Pack(data)
+		ge, err := gaspriceoracle.GetL1FeeMethod.Inputs.Pack(txData)
 		if err != nil {
 			return nil, err
 		}
@@ -162,8 +188,11 @@ func CalcOptimismPVGWithEthClient(
 		if err != nil {
 			return nil, err
 		}
-		l2price := op.MaxFeePerGas
-		l2priority := big.NewInt(0).Add(op.MaxPriorityFeePerGas, head.BaseFee)
+		l2price := op.GetMaxFeePerGas()
+		dataMap, _ := op.ToMap()
+		maxPriStr := fieldToHexStr(dataMap, "maxPriorityFeePerGas")
+		maxPri, _ := hexutil.DecodeBig(maxPriStr)
+		l2priority := big.NewInt(0).Add(maxPri, head.BaseFee)
 		if l2priority.Cmp(l2price) == -1 {
 			l2price = l2priority
 		}

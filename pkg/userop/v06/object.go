@@ -50,6 +50,16 @@ type UserOperation struct {
 	Signature            []byte         `json:"signature"            mapstructure:"signature"            validate:"required"`
 }
 
+// GetSender returns the sender address.
+func (op *UserOperation) GetSender() common.Address {
+	return op.Sender
+}
+
+// GetMaxFeePerGas returns the max fee per gas.
+func (op *UserOperation) GetMaxFeePerGas() *big.Int {
+	return op.MaxFeePerGas
+}
+
 // GetPaymaster returns the address portion of PaymasterAndData if applicable. Otherwise it returns the zero
 // address.
 func (op *UserOperation) GetPaymaster() common.Address {
