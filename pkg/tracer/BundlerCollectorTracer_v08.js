@@ -28,7 +28,11 @@ var tracer = {
     );
   },
 
-  result: function result(_ctx, _db) {
+  result: function result(ctx, _db) {
+    var hasAuth = this._hasEip7702Auth(toHex(ctx.input));
+    for (var i = 0; i < this.callsFromEntryPoint.length; i++) {
+      this.callsFromEntryPoint[i].eip7702Auth = hasAuth;
+    }
     return {
       callsFromEntryPoint: this.callsFromEntryPoint,
       keccak: this.keccak,
@@ -68,19 +72,27 @@ var tracer = {
     list[key] += 1;
   },
 
-  // Return true if the top-level entrypoint.handleOps(...) call has
-  // a non-empty eip7702Auth tuple (detected by calldata length).
+  // Return true if the top-level entrypoint.handleOps(...) call has a
+  // non-empty eip7702Auth tuple, parsed from the ABI-encoded calldata.
+  // handleOps selector: 0x1a5d1cd7.
+  // Layout (per IEntryPoint v0.8): (PackedUserOperation[] ops, address beneficiary, bytes _unused) +
+  // tail bytes (PackedUserOperation layout) that ends with an offset to the
+  // eip7702Auth[] tail array. We simply look for the auth-array offset word
+  // (right after the third 32-byte head word) and check its length.
   _hasEip7702Auth: function (inputHex) {
     if (!inputHex || inputHex.length < 10) return false;
-    // handleOps selector is 0x1a5d1cd7
     if (inputHex.slice(0, 10) !== "0x1a5d1cd7") return false;
     var payload = inputHex.slice(10);
-    if (payload.length < 64 * 5) return false;
-    // offsets: ops, beneficiary, _bytes_offset (per IEntryPoint v0.8 handleOps)
-    // We conservatively check whether the last "eip7702Auth" presence flag
-    // appears by looking for a non-zero 32-byte word that looks like an auth tuple start.
-    // In practice, the bundler can decode this; here we just record that the call is a handleOps.
-    return true;
+    if (payload.length < 64 * 3) return false;
+    var authOffsetHex = payload.slice(128, 192);
+    var authOffset = parseInt(authOffsetHex, 16);
+    if (isNaN(authOffset)) return false;
+    var lengthStart = authOffset * 2;
+    var authLengthHex = payload.slice(lengthStart, lengthStart + 64);
+    if (!authLengthHex) return false;
+    var authLength = parseInt(authLengthHex, 16);
+    if (isNaN(authLength)) return false;
+    return authLength > 0;
   },
 
   step: function step(log, db) {
@@ -106,7 +118,7 @@ var tracer = {
       log.getGas() < log.getCost() ||
       (opcode === "SSTORE" && log.getGas() < 2300)
     ) {
-      this.currentLevel.oog = true;
+      if (this.currentLevel) this.currentLevel.oog = true;
     }
 
     if (opcode === "REVERT" || opcode === "RETURN") {
@@ -219,6 +231,17 @@ var tracer = {
         }
       } else {
         this.countSlot(access.writes, slotHex);
+      }
+    }
+
+    if (opcode === "TSTORE") {
+      if (this.currentLevel) {
+        this.currentLevel.tstore = (this.currentLevel.tstore || 0) + 1;
+      }
+    }
+    if (opcode === "TLOAD") {
+      if (this.currentLevel) {
+        this.currentLevel.tload = (this.currentLevel.tload || 0) + 1;
       }
     }
 

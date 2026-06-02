@@ -53,9 +53,10 @@ var tracer = {
     };
   },
 
-  // Read the return value pushed onto the EVM stack at the next RETURNDATACOPY
-  // boundary for STATICCALL with selector getCurrentUserOpHash. We do a
-  // best-effort capture by inspecting the memory at the moment of the call.
+  // Detect a STATICCALL to the EntryPoint with selector getCurrentUserOpHash
+  // during execution. We only flip a boolean here; the actual return data
+  // is read at the corresponding RETURN (which lives in the callee's memory
+  // and stack frame).
   _maybeCaptureCurrentUserOpHash: function (log) {
     var opcode = log.op.toString();
     if (opcode !== "STATICCALL") return;
@@ -67,24 +68,27 @@ var tracer = {
     if (_len < 4) return;
     var inputHex = toHex(log.memory.slice(_ofs, _ofs + 4));
     if (inputHex !== this._getCurrentUserOpHashSelector) return;
-    // Result is written to retOffset/retLength on the call's RETURN; we record
-    // the request now and the result will be picked up on RETURN.
-    this._pendingGetCurrentUserOpHash = {
-      retOffset: parseInt(log.stack.peek(4).toString()),
-      retLength: parseInt(log.stack.peek(5).toString()),
-    };
+    this._pendingGetCurrentUserOpHash = true;
   },
 
   _consumePendingGetCurrentUserOpHash: function (log) {
     if (!this._pendingGetCurrentUserOpHash) return;
-    var pending = this._pendingGetCurrentUserOpHash;
-    if (pending.retLength <= 0) {
+    // log may be a stub (e.g. on error exit) with no stack; in that case
+    // discard the pending flag and bail.
+    if (!log || !log.stack) {
       this._pendingGetCurrentUserOpHash = null;
       return;
     }
-    var mem = toHex(
-      log.memory.slice(pending.retOffset, pending.retOffset + pending.retLength)
-    );
+    // The callee's RETURN stack layout: offset(0), length(1). We slice
+    // log.memory with those values, not the caller's retOffset/retLength,
+    // because log.memory at this point belongs to the callee.
+    var ofs = parseInt(log.stack.peek(0).toString());
+    var len = parseInt(log.stack.peek(1).toString());
+    if (isNaN(ofs) || isNaN(len) || len <= 0) {
+      this._pendingGetCurrentUserOpHash = null;
+      return;
+    }
+    var mem = toHex(log.memory.slice(ofs, ofs + len));
     this.currentUserOpHashes.push(mem);
     this._pendingGetCurrentUserOpHash = null;
   },

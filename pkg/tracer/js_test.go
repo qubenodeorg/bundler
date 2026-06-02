@@ -423,3 +423,264 @@ func TestExecution_V06V07V08_NoCurrentUserOpHash(t *testing.T) {
 		})
 	}
 }
+
+// ---- Regression tests for PR #25 review comments ----
+
+// TestCollector_HandlesOOGBeforeFirstCall ensures the v0.7+ collector
+// tracer does not crash with a TypeError when a gas-underrun happens at
+// depth 1 before any CALL/STATICCALL initialises currentLevel.
+func TestCollector_HandlesOOGBeforeFirstCall(t *testing.T) {
+	for _, v := range []userop.Version{userop.V0_7, userop.V0_8, userop.V0_9} {
+		v := v
+		t.Run(string(v), func(t *testing.T) {
+			rt := runCollectorJS(t, v)
+			// Drive a depth-1 step with gas < cost. Before the fix this
+			// threw "Cannot set property 'oog' of null".
+			mustRun(t, rt, `
+tracer.step({
+  op: "ADD",
+  getDepth: function(){return 1},
+  getGas: function(){return 1},
+  getCost: function(){return 100},
+  stack: {length: function(){return 0}, peek: function(i){return BigInt(0)}},
+  memory: {slice: function(o,l){return []}},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+		})
+	}
+}
+
+// TestCollector_PopulatesTSTOREAndTLOADFields ensures the v0.7+ collector
+// tracer populates the dedicated tstore / tload fields on the current
+// CallFromEntryPointInfo (and not just the generic opcodes map).
+func TestCollector_PopulatesTSTOREAndTLOADFields(t *testing.T) {
+	for _, v := range []userop.Version{userop.V0_7, userop.V0_8, userop.V0_9} {
+		v := v
+		t.Run(string(v), func(t *testing.T) {
+			rt := runCollectorJS(t, v)
+			// Open a depth-1 CALL so currentLevel is initialised.
+			mustRun(t, rt, `
+tracer.step({
+  op: "CALL",
+  getDepth: function(){return 1},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {
+    length: function(){return 7},
+    peek: function(i){
+      var s = ["0x64", "0x1111111111111111111111111111111111111111", "0x0", "0x0", "0x0", "0x0", "0x0"];
+      return s[i];
+    }
+  },
+  memory: {slice: function(o,l){
+    var out = [];
+    for (var i = o; i < o + l && i < 4; i++) out.push(0x80 + i);
+    return out;
+  }},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+			// TSTORE/TLOAD happen inside the called code, at depth 2.
+			for i := 0; i < 2; i++ {
+				mustRun(t, rt, `
+tracer.step({
+  op: "TSTORE",
+  getDepth: function(){return 2},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {length: function(){return 0}, peek: function(i){return BigInt(0)}},
+  memory: {slice: function(o,l){return []}},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+			}
+			mustRun(t, rt, `
+tracer.step({
+  op: "TLOAD",
+  getDepth: function(){return 2},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {length: function(){return 0}, peek: function(i){return BigInt(0)}},
+  memory: {slice: function(o,l){return []}},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+			ts := getInt(t, rt, "tracer.currentLevel.tstore")
+			tl := getInt(t, rt, "tracer.currentLevel.tload")
+			if ts != 2 {
+				t.Errorf("%s tstore: got %d, want 2", v, ts)
+			}
+			if tl != 1 {
+				t.Errorf("%s tload: got %d, want 1", v, tl)
+			}
+		})
+	}
+}
+
+// TestCollector_V08_DetectsEIP7702Auth drives the v0.8 collector end-to-end
+// with a synthetic handleOps calldata, then asserts the eip7702Auth flag is
+// set when the auth array is non-empty and not set when it is empty.
+func TestCollector_V08_DetectsEIP7702Auth(t *testing.T) {
+	cases := []struct {
+		name    string
+		payload string
+		want    int
+	}{
+		{
+			name: "with_auth",
+			// handleOps selector (0x1a5d1cd7) + 3 head words (ops offset,
+			// beneficiary, eip7702Auth offset) + auth length + auth tuple.
+			payload: "0x1a5d1cd7" +
+				"0000000000000000000000000000000000000000000000000000000000000020" +
+				"0000000000000000000000001111111111111111111111111111111111111111" +
+				"0000000000000000000000000000000000000000000000000000000000000080" +
+				"0000000000000000000000000000000000000000000000000000000000000001" +
+				"0000000000000000000000002222222222222222222222222222222222222222",
+			want: 1,
+		},
+		{
+			name: "without_auth",
+			// Same head but auth array length = 0.
+			payload: "0x1a5d1cd7" +
+				"0000000000000000000000000000000000000000000000000000000000000020" +
+				"0000000000000000000000001111111111111111111111111111111111111111" +
+				"0000000000000000000000000000000000000000000000000000000000000080" +
+				"0000000000000000000000000000000000000000000000000000000000000000",
+			want: 0,
+		},
+		{
+			name:    "non_handleOps",
+			payload: "0xdeadbeef00000000000000000000000000000000000000000000000000000000",
+			want:    0,
+		},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			rt := runCollectorJS(t, userop.V0_8)
+			// Drive a depth-1 CALL so callsFromEntryPoint is non-empty.
+			mustRun(t, rt, `
+tracer.step({
+  op: "CALL",
+  getDepth: function(){return 1},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {
+    length: function(){return 7},
+    peek: function(i){
+      var s = ["0x64", "0x1111111111111111111111111111111111111111", "0x0", "0x0", "0x0", "0x0", "0x0"];
+      return s[i];
+    }
+  },
+  memory: {slice: function(o,l){return [0x80, 0xc5, 0xc7, 0xd0];}},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+			got := getInt(t, rt, fmt.Sprintf(`
+(function(){
+  var out = tracer.result({input: %q}, {getCode: function(a){return '';}});
+  return out.callsFromEntryPoint[0].eip7702Auth ? 1 : 0;
+})()
+`, c.payload))
+			if got != c.want {
+				t.Errorf("eip7702Auth: got %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
+// TestCollector_V09_DetectsEIP7702Auth mirrors the v0.8 test for the v0.9
+// collector tracer. The parser is shared logic.
+func TestCollector_V09_DetectsEIP7702Auth(t *testing.T) {
+	payload := "0x1a5d1cd7" +
+		"0000000000000000000000000000000000000000000000000000000000000020" +
+		"0000000000000000000000001111111111111111111111111111111111111111" +
+		"0000000000000000000000000000000000000000000000000000000000000080" +
+		"0000000000000000000000000000000000000000000000000000000000000001" +
+		"0000000000000000000000002222222222222222222222222222222222222222"
+	rt := runCollectorJS(t, userop.V0_9)
+	mustRun(t, rt, `
+tracer.step({
+  op: "CALL",
+  getDepth: function(){return 1},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {
+    length: function(){return 7},
+    peek: function(i){
+      var s = ["0x64", "0x1111111111111111111111111111111111111111", "0x0", "0x0", "0x0", "0x0", "0x0"];
+      return s[i];
+    }
+  },
+  memory: {slice: function(o,l){return [0x80, 0xc5, 0xc7, 0xd0];}},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+	got := getInt(t, rt, fmt.Sprintf(`
+(function(){
+  var out = tracer.result({input: %q}, {getCode: function(a){return '';}});
+  return out.callsFromEntryPoint[0].eip7702Auth ? 1 : 0;
+})()
+`, payload))
+	if got != 1 {
+		t.Errorf("v0.9 eip7702Auth: got %d, want 1", got)
+	}
+}
+
+// TestCollector_V09_DetectsPaymasterSignature exercises the v0.9 collector's
+// _hasPaymasterSignature helper directly. The helper uses a length-based
+// heuristic: a calldata with a non-empty paymasterSignature exceeds 14 head
+// words; a calldata without stays under it.
+func TestCollector_V09_DetectsPaymasterSignature(t *testing.T) {
+	makePayload := func(extraWords int) string {
+		// Calldata starts with the validatePaymasterUserOp selector plus a
+		// structOffset head word, then variable tail.
+		head := "c04a6310" +
+			"0000000000000000000000000000000000000000000000000000000000000020"
+		zero := "0000000000000000000000000000000000000000000000000000000000000000"
+		out := "0x" + head
+		for i := 0; i < 4+extraWords; i++ {
+			out += zero
+		}
+		return out
+	}
+	cases := []struct {
+		name    string
+		payload string
+		want    int
+	}{
+		{name: "with_sig", payload: makePayload(20), want: 1},
+		{name: "no_sig", payload: makePayload(4), want: 0},
+		{name: "non_validatePaymasterUserOp", payload: "0xdeadbeef00", want: 0},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			rt := runCollectorJS(t, userop.V0_9)
+			got := getInt(t, rt, fmt.Sprintf(`tracer._hasPaymasterSignature(%q) ? 1 : 0`, c.payload))
+			if got != c.want {
+				t.Errorf("paymasterSignature: got %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
+// TestExecution_ConsumePendingGetCurrentUserOpHash_NullLog ensures the v0.9
+// execution tracer does not crash when _consumePendingGetCurrentUserOpHash
+// is called with a stub log (no stack) on error exit.
+func TestExecution_ConsumePendingGetCurrentUserOpHash_NullLog(t *testing.T) {
+	rt := runExecutionJS(t, userop.V0_9, "0x433709009b8330fda32311df1c2afa402ed8d009")
+	mustRun(t, rt, `tracer._pendingGetCurrentUserOpHash = true;`)
+	// Should be a no-op, not a TypeError.
+	mustRun(t, rt, `tracer._consumePendingGetCurrentUserOpHash({memory: {slice: function(){return "";}}});`)
+	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHash ? 1 : 0") != 0 {
+		t.Errorf("pending flag should be cleared after a null-log consume")
+	}
+}

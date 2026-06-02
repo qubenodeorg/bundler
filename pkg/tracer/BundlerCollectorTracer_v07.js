@@ -97,7 +97,7 @@ var tracer = {
       log.getGas() < log.getCost() ||
       (opcode === "SSTORE" && log.getGas() < 2300)
     ) {
-      this.currentLevel.oog = true;
+      if (this.currentLevel) this.currentLevel.oog = true;
     }
 
     if (opcode === "REVERT" || opcode === "RETURN") {
@@ -210,6 +210,17 @@ var tracer = {
         }
       } else {
         this.countSlot(access.writes, slotHex);
+      }
+    }
+
+    if (opcode === "TSTORE") {
+      if (this.currentLevel) {
+        this.currentLevel.tstore = (this.currentLevel.tstore || 0) + 1;
+      }
+    }
+    if (opcode === "TLOAD") {
+      if (this.currentLevel) {
+        this.currentLevel.tload = (this.currentLevel.tload || 0) + 1;
       }
     }
 

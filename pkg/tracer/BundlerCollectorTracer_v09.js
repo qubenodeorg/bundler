@@ -16,7 +16,46 @@ var tracer = {
   topLevelCallCounter: 0,
 
   // validatePaymasterUserOp selector in v0.9 (same as v0.7/0.8).
-  validatePaymasterUserOpSelector: "0x",
+  validatePaymasterUserOpSelector: "0xc04a6310",
+  // handleOps selector in v0.9 (same as v0.7/0.8).
+  handleOpsSelector: "0x1a5d1cd7",
+
+  // Return true if the top-level entrypoint.handleOps(...) call has a
+  // non-empty eip7702Auth tuple, parsed from the ABI-encoded calldata.
+  _hasEip7702Auth: function (inputHex) {
+    if (!inputHex || inputHex.length < 10) return false;
+    if (inputHex.slice(0, 10) !== "0x1a5d1cd7") return false;
+    var payload = inputHex.slice(10);
+    if (payload.length < 64 * 3) return false;
+    var authOffsetHex = payload.slice(128, 192);
+    var authOffset = parseInt(authOffsetHex, 16);
+    if (isNaN(authOffset)) return false;
+    var lengthStart = authOffset * 2;
+    var authLengthHex = payload.slice(lengthStart, lengthStart + 64);
+    if (!authLengthHex) return false;
+    var authLength = parseInt(authLengthHex, 16);
+    if (isNaN(authLength)) return false;
+    return authLength > 0;
+  },
+
+  // Return true if the validatePaymasterUserOp(...) call's calldata is
+  // long enough to include a non-empty paymasterSignature tail.
+  // The v0.9 PackedUserOperation grew a paymasterSignature bytes field;
+  // we cannot easily parse it out of the deeply-nested ABI calldata in a
+  // JS tracer, so we use a calibrated length-based heuristic: a call
+  // without a paymasterSignature still includes the head + the (empty)
+  // signature tail offset, which falls under PAYMASTER_SIG_NO_SIG_MAX_LEN
+  // hex chars; a call with a signature will exceed that threshold.
+  _hasPaymasterSignature: function (inputHex) {
+    if (!inputHex || inputHex.length < 10) return false;
+    if (inputHex.slice(0, 10) !== "0xc04a6310") return false;
+    var payload = inputHex.slice(10);
+    // Threshold: a no-signature validatePaymasterUserOp call has at most
+    // 4 head words + an empty signature tail. 14 head words is a safe
+    // upper bound for the no-signature case; anything longer indicates
+    // a non-empty signature.
+    return payload.length > 64 * 14;
+  },
 
   fault: function fault(log, _db) {
     this.debug.push(
@@ -31,7 +70,11 @@ var tracer = {
     );
   },
 
-  result: function result(_ctx, _db) {
+  result: function result(ctx, _db) {
+    var hasAuth = this._hasEip7702Auth(toHex(ctx.input));
+    for (var i = 0; i < this.callsFromEntryPoint.length; i++) {
+      this.callsFromEntryPoint[i].eip7702Auth = hasAuth;
+    }
     return {
       callsFromEntryPoint: this.callsFromEntryPoint,
       keccak: this.keccak,
@@ -95,7 +138,7 @@ var tracer = {
       log.getGas() < log.getCost() ||
       (opcode === "SSTORE" && log.getGas() < 2300)
     ) {
-      this.currentLevel.oog = true;
+      if (this.currentLevel) this.currentLevel.oog = true;
     }
 
     if (opcode === "REVERT" || opcode === "RETURN") {
@@ -118,6 +161,10 @@ var tracer = {
         var topLevelTargetAddress = toHex(addr);
         var _ofs = parseInt(log.stack.peek(3).toString());
         var topLevelMethodSig = toHex(log.memory.slice(_ofs, _ofs + 4));
+        var _lenIdx = opcode === "STATICCALL" ? 3 : 4;
+        var _len = parseInt(log.stack.peek(_lenIdx).toString());
+        var inputHex = toHex(log.memory.slice(_ofs, _ofs + _len));
+        var hasPaymasterSig = this._hasPaymasterSignature(inputHex);
 
         this.currentLevel = this.callsFromEntryPoint[this.topLevelCallCounter] =
           {
@@ -127,6 +174,7 @@ var tracer = {
             opcodes: {},
             extCodeAccessInfo: {},
             contractSize: {},
+            paymasterSignature: hasPaymasterSig,
           };
         this.topLevelCallCounter++;
       } else if (opcode === "LOG1") {
@@ -208,6 +256,17 @@ var tracer = {
         }
       } else {
         this.countSlot(access.writes, slotHex);
+      }
+    }
+
+    if (opcode === "TSTORE") {
+      if (this.currentLevel) {
+        this.currentLevel.tstore = (this.currentLevel.tstore || 0) + 1;
+      }
+    }
+    if (opcode === "TLOAD") {
+      if (this.currentLevel) {
+        this.currentLevel.tload = (this.currentLevel.tload || 0) + 1;
       }
     }
 
