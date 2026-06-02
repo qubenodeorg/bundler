@@ -30,6 +30,19 @@ type SimulateInput struct {
 }
 
 func toPackedOp(op userop.UserOperationInterface) (*epv08.PackedUserOperation, error) {
+	if v08op, ok := op.(*uov08.UserOperation); ok {
+		return &epv08.PackedUserOperation{
+			Sender:             v08op.Sender,
+			Nonce:              v08op.Nonce,
+			InitCode:           v08op.PackInitCode(),
+			CallData:           v08op.CallData,
+			AccountGasLimits:   v08op.AccountGasLimits(),
+			PreVerificationGas: v08op.PreVerificationGas,
+			GasFees:            v08op.GasFees(),
+			PaymasterAndData:   v08op.PackPaymasterAndData(),
+			Signature:          v08op.Signature,
+		}, nil
+	}
 	data, err := op.ToMap()
 	if err != nil {
 		return nil, err
