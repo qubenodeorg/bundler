@@ -357,11 +357,12 @@ for (var i = 4; i < 64; i++) __mem.push(0);
 `)
 
 	// Staticcall to the EntryPoint with selector getCurrentUserOpHash.
-	// STATICCALL stack layout: gas(0), addr(1), argsOffset(2), argsLength(3), retOffset(4), retLength(5).
+	// STATICCALL is executed in the *caller* frame (depth 1 in our trace
+	// after the 3 NUMBERs above). The callee then runs at depth 2.
 	mustRun(t, rt, fmt.Sprintf(`
 tracer.step({
   op: "STATICCALL",
-  getDepth: function(){return 2},
+  getDepth: function(){return 1},
   getGas: function(){return 1000},
   getCost: function(){return 100},
   stack: {
@@ -381,9 +382,10 @@ tracer.step({
 }, {getCode: function(a){return ""}});
 `, ep))
 
-	// The tracer pushes a pending capture; now simulate a RETURN that
-	// consumes it. We use the same STATICCALL return path that
-	// _consumePendingGetCurrentUserOpHash expects.
+	// The tracer pushes a pending capture; now simulate a RETURN at
+	// depth 2 (callee frame) that consumes it. We use the same
+	// STATICCALL return path that _consumePendingGetCurrentUserOpHash
+	// expects.
 	mustRun(t, rt, `
 tracer.step({
   op: "RETURN",
@@ -522,48 +524,46 @@ tracer.step({
 	}
 }
 
-// TestCollector_V08_DetectsEIP7702Auth drives the v0.8 collector end-to-end
-// with a synthetic handleOps calldata, then asserts the eip7702Auth flag is
-// set when the auth array is non-empty and not set when it is empty.
-func TestCollector_V08_DetectsEIP7702Auth(t *testing.T) {
+// TestCollector_V08_StandardHandleOpsHasNoTopLevelEIP7702Auth documents the
+// v0.8 contract: standard handleOps has only two parameters
+// (PackedUserOperation[] ops, address beneficiary), so the JS tracer
+// cannot detect eip7702Auth from the calldata alone. The flag is therefore
+// always false at this level; the Go simulation pipeline decodes auth from
+// the PackedUserOperation tail instead.
+func TestCollector_V08_StandardHandleOpsHasNoTopLevelEIP7702Auth(t *testing.T) {
 	cases := []struct {
 		name    string
 		payload string
-		want    int
 	}{
 		{
-			name: "with_auth",
-			// handleOps selector (0x1a5d1cd7) + 3 head words (ops offset,
-			// beneficiary, eip7702Auth offset) + auth length + auth tuple.
+			// Realistic v0.8 handleOps: selector + 2 head words (ops offset,
+			// beneficiary) + minimal PackedUserOperation array length of 0.
+			name: "standard_handleOps",
+			payload: "0x1a5d1cd7" +
+				"0000000000000000000000000000000000000000000000000000000000000020" +
+				"0000000000000000000000001111111111111111111111111111111111111111" +
+				"0000000000000000000000000000000000000000000000000000000000000000",
+		},
+		{
+			// Custom 3-head-word calldata with a 1-element auth tuple must
+			// still return false under the v0.8/v0.9 standard 2-param ABI.
+			name: "decoy_3head_with_auth",
 			payload: "0x1a5d1cd7" +
 				"0000000000000000000000000000000000000000000000000000000000000020" +
 				"0000000000000000000000001111111111111111111111111111111111111111" +
 				"0000000000000000000000000000000000000000000000000000000000000080" +
 				"0000000000000000000000000000000000000000000000000000000000000001" +
 				"0000000000000000000000002222222222222222222222222222222222222222",
-			want: 1,
-		},
-		{
-			name: "without_auth",
-			// Same head but auth array length = 0.
-			payload: "0x1a5d1cd7" +
-				"0000000000000000000000000000000000000000000000000000000000000020" +
-				"0000000000000000000000001111111111111111111111111111111111111111" +
-				"0000000000000000000000000000000000000000000000000000000000000080" +
-				"0000000000000000000000000000000000000000000000000000000000000000",
-			want: 0,
 		},
 		{
 			name:    "non_handleOps",
 			payload: "0xdeadbeef00000000000000000000000000000000000000000000000000000000",
-			want:    0,
 		},
 	}
 	for _, c := range cases {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
 			rt := runCollectorJS(t, userop.V0_8)
-			// Drive a depth-1 CALL so callsFromEntryPoint is non-empty.
 			mustRun(t, rt, `
 tracer.step({
   op: "CALL",
@@ -588,22 +588,22 @@ tracer.step({
   return out.callsFromEntryPoint[0].eip7702Auth ? 1 : 0;
 })()
 `, c.payload))
-			if got != c.want {
-				t.Errorf("eip7702Auth: got %d, want %d", got, c.want)
+			if got != 0 {
+				t.Errorf("v0.8 eip7702Auth must be false for standard handleOps; got %d", got)
 			}
 		})
 	}
 }
 
-// TestCollector_V09_DetectsEIP7702Auth mirrors the v0.8 test for the v0.9
-// collector tracer. The parser is shared logic.
-func TestCollector_V09_DetectsEIP7702Auth(t *testing.T) {
+// TestCollector_V09_StandardHandleOpsHasNoTopLevelEIP7702Auth mirrors the
+// v0.8 contract for v0.9: standard handleOps is (PackedUserOperation[] ops,
+// address beneficiary), so the JS tracer returns false and lets the Go
+// pipeline decode the auth from the userOp tail.
+func TestCollector_V09_StandardHandleOpsHasNoTopLevelEIP7702Auth(t *testing.T) {
 	payload := "0x1a5d1cd7" +
 		"0000000000000000000000000000000000000000000000000000000000000020" +
 		"0000000000000000000000001111111111111111111111111111111111111111" +
-		"0000000000000000000000000000000000000000000000000000000000000080" +
-		"0000000000000000000000000000000000000000000000000000000000000001" +
-		"0000000000000000000000002222222222222222222222222222222222222222"
+		"0000000000000000000000000000000000000000000000000000000000000000"
 	rt := runCollectorJS(t, userop.V0_9)
 	mustRun(t, rt, `
 tracer.step({
@@ -629,36 +629,72 @@ tracer.step({
   return out.callsFromEntryPoint[0].eip7702Auth ? 1 : 0;
 })()
 `, payload))
-	if got != 1 {
-		t.Errorf("v0.9 eip7702Auth: got %d, want 1", got)
+	if got != 0 {
+		t.Errorf("v0.9 eip7702Auth must be false for standard handleOps; got %d", got)
 	}
 }
 
 // TestCollector_V09_DetectsPaymasterSignature exercises the v0.9 collector's
-// _hasPaymasterSignature helper directly. The helper uses a length-based
-// heuristic: a calldata with a non-empty paymasterSignature exceeds 14 head
-// words; a calldata without stays under it.
+// _hasPaymasterSignature helper directly with realistic ABI-encoded
+// validatePaymasterUserOp calldata. The v0.9 PackedUserOperation's 13th
+// head word (chars 768-832 of the payload) is the offset of the
+// paymasterSignature tail relative to the start of the PackedUserOperation
+// struct (which begins at byte 96 of the payload). We set that offset to
+// zero in the test and abuse the sender word (chars 192-256) as the
+// signature length, so the parser picks up the value it would read at
+// payload[(96 + 0) * 2 : ...] = payload[192:256].
 func TestCollector_V09_DetectsPaymasterSignature(t *testing.T) {
-	makePayload := func(extraWords int) string {
-		// Calldata starts with the validatePaymasterUserOp selector plus a
-		// structOffset head word, then variable tail.
-		head := "c04a6310" +
-			"0000000000000000000000000000000000000000000000000000000000000020"
-		zero := "0000000000000000000000000000000000000000000000000000000000000000"
-		out := "0x" + head
-		for i := 0; i < 4+extraWords; i++ {
-			out += zero
+	// hexWord builds a 32-byte (64-hex-char) big-endian word.
+	hexWord := func(v uint64) string {
+		return fmt.Sprintf("%064x", v)
+	}
+	zeroWord := "0000000000000000000000000000000000000000000000000000000000000000"
+	// pad builds `n` zero words of 64 hex chars each.
+	pad := func(n int) string {
+		out := ""
+		for i := 0; i < n; i++ {
+			out += zeroWord
 		}
 		return out
 	}
+
+	// validatePaymasterUserOp selector.
+	const selector = "c04a6310"
+
+	// 3 head words of validatePaymasterUserOp, then 10 PackedUserOperation
+	// head words, then 12 zero words representing the variable-length
+	// tail offsets. Total payload after selector = 3 + 10 + 12 = 25 words
+	// = 1600 hex chars.
+	build := func(senderLen uint64) string {
+		// Word 12 (chars 768-832) of the payload is the 10th
+		// PackedUserOperation head word = paymasterSignature offset.
+		// Setting it to 0 means the parser reads the length from
+		// payload[(96+0)*2 : (96+0)*2 + 64] = payload[192:256] =
+		// the first PackedUserOperation head word (sender). The
+		// sender field therefore doubles as the signature length
+		// indicator in this synthetic test.
+		return "0x" + selector +
+			hexWord(0x20) + // head0: userOp offset
+			hexWord(0x1122334455667788) + // head1: userOpHash
+			hexWord(0) + // head2: missingAccountFunds
+			hexWord(senderLen) + // sender / (parser-visible sig length)
+			pad(9) + // remaining 9 PackedUserOperation head words
+			pad(12) // tail offsets (zeros)
+	}
+
 	cases := []struct {
 		name    string
 		payload string
 		want    int
 	}{
-		{name: "with_sig", payload: makePayload(20), want: 1},
-		{name: "no_sig", payload: makePayload(4), want: 0},
+		// Realistic 65-byte ECDSA signature.
+		{name: "with_sig", payload: build(65), want: 1},
+		// No signature — sender is zero, parser reads length=0.
+		{name: "no_sig", payload: build(0), want: 0},
+		// Wrong selector — must short-circuit to false.
 		{name: "non_validatePaymasterUserOp", payload: "0xdeadbeef00", want: 0},
+		// Truncated before the 13th head word — must short-circuit.
+		{name: "truncated_payload", payload: "0xc04a6310" + pad(12), want: 0},
 	}
 	for _, c := range cases {
 		c := c
@@ -682,5 +718,137 @@ func TestExecution_ConsumePendingGetCurrentUserOpHash_NullLog(t *testing.T) {
 	mustRun(t, rt, `tracer._consumePendingGetCurrentUserOpHash({memory: {slice: function(){return "";}}});`)
 	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHash ? 1 : 0") != 0 {
 		t.Errorf("pending flag should be cleared after a null-log consume")
+	}
+}
+
+// TestExecution_PendingClearedOnFrameExit exercises the v0.9 execution
+// tracer's depth-aware clear: a STATICCALL to getCurrentUserOpHash sets
+// the pending flag at the call's depth, and if the call frame ends
+// without a matching RETURN (revert / OOG / etc.), the next step at a
+// shallower or equal depth must clear the flag so a subsequent
+// unrelated RETURN does not consume stale memory.
+func TestExecution_PendingClearedOnFrameExit(t *testing.T) {
+	ep := "0x433709009b8330fda32311df1c2afa402ed8d009"
+	rt := runExecutionJS(t, userop.V0_9, ep)
+
+	// Move into execution region (3 NUMBERs).
+	for i := 0; i < 3; i++ {
+		callJS(t, rt, "step", &stepLog{Op: "NUMBER", Depth: 1, Gas: 100, Cost: 2})
+	}
+
+	// STATICCALL to EntryPoint with selector getCurrentUserOpHash. The
+	// opcode itself runs in the *caller* frame (depth 1 in our trace).
+	mustRun(t, rt, fmt.Sprintf(`
+tracer.step({
+  op: "STATICCALL",
+  getDepth: function(){return 1},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {
+    length: function(){return 7},
+    peek: function(i){
+      var s = ["0x64", %q, "0x0", "0x4", "0x0", "0x20", "0x0"];
+      return s[i];
+    }
+  },
+  memory: {slice: function(o,l){
+    var all = [0x60, 0xe6, 0xb9, 0xfb, 0, 0, 0, 0];
+    var out = [];
+    for (var i = o; i < o + l && i < all.length; i++) out.push(all[i]);
+    return out;
+  }},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`, ep))
+
+	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHash ? 1 : 0") != 1 {
+		t.Fatalf("pending flag should be set after STATICCALL to EntryPoint with getCurrentUserOpHash selector")
+	}
+	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHashDepth") != 1 {
+		t.Fatalf("pending depth should be 1, got %d", getInt(t, rt, "tracer._pendingGetCurrentUserOpHashDepth"))
+	}
+
+	// A non-RETURN step at depth 2 (the callee frame) does not clear the
+	// flag — the STATICCALL is still in flight. The clear check is
+	// `depth <= pendingDepth` (1), so depth 2 is above the bar.
+	callJS(t, rt, "step", &stepLog{Op: "ADD", Depth: 2, Gas: 100, Cost: 3})
+	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHash ? 1 : 0") != 1 {
+		t.Errorf("pending flag should NOT be cleared at depth 2 while call is in flight")
+	}
+
+	// Now drive a step at depth 1 (back in the caller frame): the call
+	// ended without a RETURN (it reverted / ran OOG / etc.), so the
+	// tracer must clear the pending flag.
+	callJS(t, rt, "step", &stepLog{Op: "ADD", Depth: 1, Gas: 100, Cost: 3})
+	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHash ? 1 : 0") != 0 {
+		t.Errorf("pending flag should be cleared when EVM returns to a shallower frame without consuming the capture")
+	}
+
+	// An unrelated RETURN at depth 1 must not be captured: it is not
+	// associated with the getCurrentUserOpHash STATICCALL.
+	mustRun(t, rt, `
+tracer.step({
+  op: "RETURN",
+  getDepth: function(){return 1},
+  getGas: function(){return 100},
+  getCost: function(){return 0},
+  stack: {length: function(){return 2}, peek: function(i){return i === 0 ? "0x0" : "0x20"}},
+  memory: {slice: function(o,l){
+    var out = [];
+    for (var i = 0; i < 32; i++) out.push(0xaa);
+    return out;
+  }},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+	if count := getInt(t, rt, "(tracer.currentUserOpHashes || []).length"); count != 0 {
+		t.Errorf("currentUserOpHashes should be empty after a stale-pending clear; got %d", count)
+	}
+}
+
+// TestExecution_AddressComparisonIsCaseInsensitive exercises the v0.9
+// execution tracer's case-insensitive EntryPoint address comparison:
+// even if the bytecode / runtime emits a checksummed or mixed-case
+// address on the STATICCALL stack, the tracer must still match
+// getCurrentUserOpHash() calls to the real EntryPoint address (which
+// load.go forces to lowercase).
+func TestExecution_AddressComparisonIsCaseInsensitive(t *testing.T) {
+	ep := "0x433709009b8330fda32311df1c2afa402ed8d009"
+	mixedCase := "0x433709009B8330FDA32311DF1C2AFA402ED8D009"
+	rt := runExecutionJS(t, userop.V0_9, ep)
+
+	// Move into execution region.
+	for i := 0; i < 3; i++ {
+		callJS(t, rt, "step", &stepLog{Op: "NUMBER", Depth: 1, Gas: 100, Cost: 2})
+	}
+
+	mustRun(t, rt, fmt.Sprintf(`
+tracer.step({
+  op: "STATICCALL",
+  getDepth: function(){return 1},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {
+    length: function(){return 7},
+    peek: function(i){
+      var s = ["0x64", %q, "0x0", "0x4", "0x0", "0x20", "0x0"];
+      return s[i];
+    }
+  },
+  memory: {slice: function(o,l){
+    var all = [0x60, 0xe6, 0xb9, 0xfb, 0, 0, 0, 0];
+    var out = [];
+    for (var i = o; i < o + l && i < all.length; i++) out.push(all[i]);
+    return out;
+  }},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`, mixedCase))
+
+	if getInt(t, rt, "tracer._pendingGetCurrentUserOpHash ? 1 : 0") != 1 {
+		t.Errorf("pending flag should be set even when the on-stack address is mixed-case")
 	}
 }

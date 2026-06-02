@@ -22,6 +22,12 @@ var tracer = {
 
   _entryPointAddressHex: "__ENTRY_POINT_ADDRESS_HEX__",
 
+  // Depth at which a pending getCurrentUserOpHash() STATICCALL was initiated.
+  // Used to clear the pending flag if the call frame exits without a
+  // matching RETURN (revert, OOG, or any other failure mode) so a
+  // subsequent unrelated RETURN does not consume stale memory.
+  _pendingGetCurrentUserOpHashDepth: 0,
+
   _isValidation: function () {
     return (
       this._marker >= this._validationMarker &&
@@ -62,13 +68,16 @@ var tracer = {
     if (opcode !== "STATICCALL") return;
     // STATICCALL stack: gas(0), addr(1), argsOffset(2), argsLength(3), retOffset(4), retLength(5)
     var addr = toAddress(log.stack.peek(1).toString(16));
-    if (toHex(addr) !== this._entryPointAddressHex) return;
+    // Compare case-insensitively: load.go forces _entryPointAddressHex to
+    // lowercase, but toHex() can return checksummed/mixed-case addresses.
+    if (toHex(addr).toLowerCase() !== this._entryPointAddressHex.toLowerCase()) return;
     var _ofs = parseInt(log.stack.peek(2).toString());
     var _len = parseInt(log.stack.peek(3).toString());
     if (_len < 4) return;
     var inputHex = toHex(log.memory.slice(_ofs, _ofs + 4));
     if (inputHex !== this._getCurrentUserOpHashSelector) return;
     this._pendingGetCurrentUserOpHash = true;
+    this._pendingGetCurrentUserOpHashDepth = log.getDepth();
   },
 
   _consumePendingGetCurrentUserOpHash: function (log) {
@@ -150,6 +159,16 @@ var tracer = {
   step: function step(log, db) {
     var opcode = log.op.toString();
     this._depth = log.getDepth();
+    // If a pending getCurrentUserOpHash() capture was set and the EVM has
+    // returned to a shallower frame (or the same depth) without seeing the
+    // matching RETURN, the call has ended (revert / OOG / etc.) and any
+    // subsequent RETURN in an unrelated frame must not consume it.
+    if (
+      this._pendingGetCurrentUserOpHash &&
+      this._depth <= this._pendingGetCurrentUserOpHashDepth
+    ) {
+      this._pendingGetCurrentUserOpHash = null;
+    }
     if (this._depth === 1 && opcode === "NUMBER") this._marker++;
 
     if (

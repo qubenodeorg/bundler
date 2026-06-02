@@ -74,25 +74,22 @@ var tracer = {
 
   // Return true if the top-level entrypoint.handleOps(...) call has a
   // non-empty eip7702Auth tuple, parsed from the ABI-encoded calldata.
-  // handleOps selector: 0x1a5d1cd7.
-  // Layout (per IEntryPoint v0.8): (PackedUserOperation[] ops, address beneficiary, bytes _unused) +
-  // tail bytes (PackedUserOperation layout) that ends with an offset to the
-  // eip7702Auth[] tail array. We simply look for the auth-array offset word
-  // (right after the third 32-byte head word) and check its length.
-  _hasEip7702Auth: function (inputHex) {
-    if (!inputHex || inputHex.length < 10) return false;
-    if (inputHex.slice(0, 10) !== "0x1a5d1cd7") return false;
-    var payload = inputHex.slice(10);
-    if (payload.length < 64 * 3) return false;
-    var authOffsetHex = payload.slice(128, 192);
-    var authOffset = parseInt(authOffsetHex, 16);
-    if (isNaN(authOffset)) return false;
-    var lengthStart = authOffset * 2;
-    var authLengthHex = payload.slice(lengthStart, lengthStart + 64);
-    if (!authLengthHex) return false;
-    var authLength = parseInt(authLengthHex, 16);
-    if (isNaN(authLength)) return false;
-    return authLength > 0;
+  //
+  // NOTE: The standard ERC-4337 v0.8/v0.9 EntryPoint signature is
+  //   handleOps(PackedUserOperation[] calldata ops, address payable beneficiary)
+  // i.e. only two parameters. There is no top-level eip7702Auth parameter;
+  // the eip7702Auth is a tail field of each PackedUserOperation struct in
+  // the ops array. As a result, the JS tracer cannot reliably detect auth
+  // presence from the calldata alone — it would need to walk every op
+  // and decode the PackedUserOperation tail, which is impractical here.
+  //
+  // The Go simulation pipeline decodes the eip7702Auth from the
+  // PackedUserOperation data after the trace completes. This helper
+  // therefore returns false for the standard 2-parameter handleOps.
+  // A future change can introduce a deeper parser if the deployment
+  // targets a custom EntryPoint that exposes auth at the top level.
+  _hasEip7702Auth: function (_inputHex) {
+    return false;
   },
 
   step: function step(log, db) {

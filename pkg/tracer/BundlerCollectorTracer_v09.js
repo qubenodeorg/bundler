@@ -22,39 +22,60 @@ var tracer = {
 
   // Return true if the top-level entrypoint.handleOps(...) call has a
   // non-empty eip7702Auth tuple, parsed from the ABI-encoded calldata.
-  _hasEip7702Auth: function (inputHex) {
-    if (!inputHex || inputHex.length < 10) return false;
-    if (inputHex.slice(0, 10) !== "0x1a5d1cd7") return false;
-    var payload = inputHex.slice(10);
-    if (payload.length < 64 * 3) return false;
-    var authOffsetHex = payload.slice(128, 192);
-    var authOffset = parseInt(authOffsetHex, 16);
-    if (isNaN(authOffset)) return false;
-    var lengthStart = authOffset * 2;
-    var authLengthHex = payload.slice(lengthStart, lengthStart + 64);
-    if (!authLengthHex) return false;
-    var authLength = parseInt(authLengthHex, 16);
-    if (isNaN(authLength)) return false;
-    return authLength > 0;
+  //
+  // NOTE: The standard ERC-4337 v0.8/v0.9 EntryPoint signature is
+  //   handleOps(PackedUserOperation[] calldata ops, address payable beneficiary)
+  // i.e. only two parameters. There is no top-level eip7702Auth parameter;
+  // the eip7702Auth is a tail field of each PackedUserOperation struct in
+  // the ops array. As a result, the JS tracer cannot reliably detect auth
+  // presence from the calldata alone — it would need to walk every op
+  // and decode the PackedUserOperation tail, which is impractical here.
+  //
+  // The Go simulation pipeline decodes the eip7702Auth from the
+  // PackedUserOperation data after the trace completes. This helper
+  // therefore returns false for the standard 2-parameter handleOps.
+  // A future change can introduce a deeper parser if the deployment
+  // targets a custom EntryPoint that exposes auth at the top level.
+  _hasEip7702Auth: function (_inputHex) {
+    return false;
   },
 
-  // Return true if the validatePaymasterUserOp(...) call's calldata is
-  // long enough to include a non-empty paymasterSignature tail.
-  // The v0.9 PackedUserOperation grew a paymasterSignature bytes field;
-  // we cannot easily parse it out of the deeply-nested ABI calldata in a
-  // JS tracer, so we use a calibrated length-based heuristic: a call
-  // without a paymasterSignature still includes the head + the (empty)
-  // signature tail offset, which falls under PAYMASTER_SIG_NO_SIG_MAX_LEN
-  // hex chars; a call with a signature will exceed that threshold.
+  // Return true if the validatePaymasterUserOp(...) call's calldata
+  // includes a non-empty paymasterSignature tail. The signature is a
+  // field of the nested PackedUserOperation struct (v0.9+ layout).
+  //
+  // Calldata layout after the 4-byte selector:
+  //   Word 0  (0   ..64 )  head[0] = userOp offset
+  //   Word 1  (64  ..128)  head[1] = userOpHash
+  //   Word 2  (128 ..192)  head[2] = missingAccountFunds
+  //   Word 3  (192 ..256)  userOp.sender
+  //   Word 4  (256 ..320)  userOp.nonce
+  //   Word 5  (320 ..384)  userOp.initCode offset
+  //   Word 6  (384 ..448)  userOp.callData offset
+  //   Word 7  (448 ..512)  userOp.accountGasLimits
+  //   Word 8  (512 ..576)  userOp.preVerificationGas
+  //   Word 9  (576 ..640)  userOp.gasFees
+  //   Word 10 (640 ..704)  userOp.paymasterAndData offset
+  //   Word 11 (704 ..768)  userOp.signature offset
+  //   Word 12 (768 ..832)  userOp.paymasterSignature offset (v0.9)
+  //
+  // The paymasterSignature offset is relative to the start of the
+  // PackedUserOperation struct (i.e. relative to byte 96 of the payload).
+  // We then read the length at (96 + offset) bytes from payload start.
   _hasPaymasterSignature: function (inputHex) {
     if (!inputHex || inputHex.length < 10) return false;
     if (inputHex.slice(0, 10) !== "0xc04a6310") return false;
     var payload = inputHex.slice(10);
-    // Threshold: a no-signature validatePaymasterUserOp call has at most
-    // 4 head words + an empty signature tail. 14 head words is a safe
-    // upper bound for the no-signature case; anything longer indicates
-    // a non-empty signature.
-    return payload.length > 64 * 14;
+    if (payload.length < 832) return false;
+    var paymasterSigOffsetHex = payload.slice(768, 832);
+    var paymasterSigOffset = parseInt(paymasterSigOffsetHex, 16);
+    if (isNaN(paymasterSigOffset)) return false;
+    var absoluteOffsetHexChar = (96 + paymasterSigOffset) * 2;
+    if (payload.length < absoluteOffsetHexChar + 64) return false;
+    var paymasterSigLengthHex = payload.slice(absoluteOffsetHexChar, absoluteOffsetHexChar + 64);
+    var paymasterSigLength = parseInt(paymasterSigLengthHex, 16);
+    if (isNaN(paymasterSigLength)) return false;
+    return paymasterSigLength > 0;
   },
 
   fault: function fault(log, _db) {
