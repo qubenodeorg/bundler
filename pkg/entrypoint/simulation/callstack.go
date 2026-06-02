@@ -19,7 +19,15 @@ type callEntry struct {
 	Return any
 }
 
+// CallEntry is an exported alias for callEntry.
+type CallEntry = callEntry
+
 func newCallStack(calls []tracer.CallInfo) []*callEntry {
+	return NewCallStack(calls)
+}
+
+// NewCallStack builds a call stack from raw trace call info.
+func NewCallStack(calls []tracer.CallInfo) []*callEntry {
 	out := []*callEntry{}
 	stack := utils.NewStack[tracer.CallInfo]()
 	for _, call := range calls {
