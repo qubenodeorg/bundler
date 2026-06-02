@@ -84,6 +84,17 @@
 - [x] Update `pkg/modules/checks/erc7562.go` — `ValidateERC7562Rules` accepts `userop.UserOperationInterface`
 - [x] `go test -count=1 ./...`, `go vet ./...`, and `go test -race` on `pkg/entrypoint/...` + `pkg/modules/...` all pass
 
+### Days 13-14: Simulation & Execution (v07, v08, v09 packages)
+
+**Approach**: Created version-specific simulation, methods, and transaction packages; kept v0.6 intact
+
+- [x] Create `pkg/entrypoint/v07/methods/`, `v08/methods/` with `handleops.go`, `primitives.go` (PackedUserOp ABI types)
+- [x] Create `pkg/entrypoint/v07/transaction/`, `v08/transaction/` with `handleops.go`, `gas.go`, `utils.go` (version-aware transaction building)
+- [x] Create `pkg/entrypoint/v07/simulation/simulatevalidation.go`, `v08/simulation/simulatevalidation.go`, `v09/simulation/simulatevalidation.go` (off-chain `SimulateValidation` via `handleOps` `eth_call`, handles AA20-AA95 error codes via version-specific `reverts/` packages)
+- [x] Existing `pkg/entrypoint/simulation/` and `pkg/entrypoint/execution/` (v0.6) remain untouched
+- [x] Write unit tests for all new code (coverage: methods=100%, reverts=78%, simulation=~50%, transaction=52.9%)
+- [x] `go build ./...`, `go vet ./...`, and `go test -count=1 ./pkg/entrypoint/...` all pass
+
 ## Week 3: Features & Integration (Days 15-21)
 
 - [ ] EIP-7702 support
