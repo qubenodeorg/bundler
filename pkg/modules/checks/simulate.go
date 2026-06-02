@@ -42,9 +42,13 @@ func simulateWithTrace(
 ) error {
 	// Build stakes map from the operation entities
 	stakes := simulation.EntityStakes{
-		op.Sender:        {Deposit: big.NewInt(0), Stake: big.NewInt(0)},
-		op.GetFactory():  {Deposit: big.NewInt(0), Stake: big.NewInt(0)},
-		op.GetPaymaster(): {Deposit: big.NewInt(0), Stake: big.NewInt(0)},
+		op.Sender: {Deposit: big.NewInt(0), Stake: big.NewInt(0)},
+	}
+	if factory := op.GetFactory(); factory != (common.Address{}) {
+		stakes[factory] = stakes[op.Sender]
+	}
+	if paymaster := op.GetPaymaster(); paymaster != (common.Address{}) {
+		stakes[paymaster] = stakes[op.Sender]
 	}
 
 	out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{

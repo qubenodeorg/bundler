@@ -61,10 +61,15 @@ func ValidatePendingOpsV07(
 	op userop.UserOperationInterface,
 	penOps []*userop.UserOperation,
 ) error {
+	nonce := op.GetNonce()
+	if nonce == nil {
+		return fmt.Errorf("nonce is nil")
+	}
+
 	if len(penOps) > 0 {
 		var oldOp *userop.UserOperation
 		for _, penOp := range penOps {
-			if op.GetNonce().Cmp(penOp.Nonce) == 0 {
+			if nonce.Cmp(penOp.Nonce) == 0 {
 				oldOp = penOp
 			}
 		}
@@ -72,7 +77,12 @@ func ValidatePendingOpsV07(
 		if oldOp != nil {
 			newMf, newMpf := calcNewThresholds(oldOp.MaxFeePerGas, oldOp.MaxPriorityFeePerGas)
 
-			if op.GetMaxFeePerGas().Cmp(newMf) < 0 || op.GetMaxPriorityFeePerGas().Cmp(newMpf) < 0 {
+			maxFee := op.GetMaxFeePerGas()
+			maxPriorityFee := op.GetMaxPriorityFeePerGas()
+			if maxFee == nil || maxPriorityFee == nil {
+				return fmt.Errorf("maxFeePerGas or maxPriorityFeePerGas is nil")
+			}
+			if maxFee.Cmp(newMf) < 0 || maxPriorityFee.Cmp(newMpf) < 0 {
 				return ErrReplacementOpUnderpriced
 			}
 		}

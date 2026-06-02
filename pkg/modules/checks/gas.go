@@ -39,7 +39,12 @@ func ValidateGasAvailableV07(
 	if err != nil {
 		return err
 	}
-	mgl := big.NewInt(0).Sub(op.GetMaxGasAvailable(), op.GetPreVerificationGas())
+	mgaVal := op.GetMaxGasAvailable()
+	pvgVal := op.GetPreVerificationGas()
+	if mgaVal == nil || pvgVal == nil {
+		return fmt.Errorf("maxGasAvailable or preVerificationGas is nil")
+	}
+	mgl := big.NewInt(0).Sub(mgaVal, pvgVal)
 	mga := big.NewInt(0).Add(mgl, static)
 
 	if mga.Cmp(maxBatchGasLimit) > 0 {

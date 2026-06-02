@@ -37,7 +37,12 @@ func ValidateVerificationGasV07(
 	ov *gas.Overhead,
 	maxVerificationGas *big.Int,
 ) error {
-	totalVG := new(big.Int).Add(op.GetVerificationGasLimit(), op.GetPaymasterVerificationGasLimit())
+	vgl := op.GetVerificationGasLimit()
+	pvgl := op.GetPaymasterVerificationGasLimit()
+	if vgl == nil || pvgl == nil {
+		return fmt.Errorf("verificationGasLimit or paymasterVerificationGasLimit is nil")
+	}
+	totalVG := new(big.Int).Add(vgl, pvgl)
 	if totalVG.Cmp(maxVerificationGas) > 0 {
 		return fmt.Errorf(
 			"verificationGasLimit: total (verificationGasLimit + paymasterVerificationGasLimit) "+
@@ -50,7 +55,11 @@ func ValidateVerificationGasV07(
 	if err != nil {
 		return err
 	}
-	if op.GetPreVerificationGas().Cmp(pvg) < 0 {
+	preVerificationGas := op.GetPreVerificationGas()
+	if preVerificationGas == nil {
+		return fmt.Errorf("preVerificationGas is nil")
+	}
+	if preVerificationGas.Cmp(pvg) < 0 {
 		return fmt.Errorf("preVerificationGas: below expected gas of %s", pvg.String())
 	}
 

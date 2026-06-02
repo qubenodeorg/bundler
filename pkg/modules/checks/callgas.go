@@ -21,7 +21,11 @@ func ValidateCallGasLimit(op *userop.UserOperation, ov *gas.Overhead) error {
 // Uses the interface to be version-agnostic.
 func ValidateCallGasLimitV07(op userop.UserOperationInterface, ov *gas.Overhead) error {
 	cg := ov.NonZeroValueCall()
-	if op.GetCallGasLimit().Cmp(cg) < 0 {
+	callGasLimit := op.GetCallGasLimit()
+	if callGasLimit == nil {
+		return fmt.Errorf("callGasLimit is nil")
+	}
+	if callGasLimit.Cmp(cg) < 0 {
 		return fmt.Errorf("callGasLimit: below expected gas of %s", cg.String())
 	}
 

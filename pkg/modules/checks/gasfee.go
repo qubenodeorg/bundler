@@ -42,19 +42,25 @@ func ValidateFeePerGasV07(op userop.UserOperationInterface, gbf gasprice.GetBase
 		return err
 	}
 
+	maxPriorityFee := op.GetMaxPriorityFeePerGas()
+	maxFee := op.GetMaxFeePerGas()
+	if maxPriorityFee == nil || maxFee == nil {
+		return fmt.Errorf("maxPriorityFeePerGas or maxFeePerGas is nil")
+	}
+
 	if bf == nil {
-		if op.GetMaxPriorityFeePerGas().Cmp(op.GetMaxFeePerGas()) != 0 {
+		if maxPriorityFee.Cmp(maxFee) != 0 {
 			return fmt.Errorf("legacy fee mode: maxPriorityFeePerGas must equal maxFeePerGas")
 		}
 
 		return nil
 	}
 
-	if op.GetMaxPriorityFeePerGas().Cmp(op.GetMaxFeePerGas()) == 1 {
+	if maxPriorityFee.Cmp(maxFee) == 1 {
 		return fmt.Errorf("maxFeePerGas: must be equal to or greater than maxPriorityFeePerGas")
 	}
 
-	if op.GetMaxFeePerGas().Cmp(bf) < 0 {
+	if maxFee.Cmp(bf) < 0 {
 		return fmt.Errorf("maxFeePerGas: must be equal to or greater than current block.basefee")
 	}
 

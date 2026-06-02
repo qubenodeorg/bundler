@@ -15,7 +15,7 @@ func ValidateInitCode(op *userop.UserOperation) error {
 	}
 
 	f := op.GetFactory()
-	if f == common.HexToAddress("0x") {
+	if f == (common.Address{}) {
 		return errors.New("initCode: does not contain a valid address")
 	}
 
@@ -26,7 +26,7 @@ func ValidateInitCode(op *userop.UserOperation) error {
 // For v0.7+, factory is a separate field. Returns nil if factory is zero address (no deployment).
 func ValidateFactory(op userop.UserOperationInterface) error {
 	f := op.GetFactory()
-	if f == common.HexToAddress("0x") {
+	if f == (common.Address{}) {
 		return nil
 	}
 	return nil
@@ -37,7 +37,7 @@ func ValidateFactory(op userop.UserOperationInterface) error {
 // v0.9 allows factoryData to be empty even if factory is set.
 func ValidateFactoryData(op userop.UserOperationInterface) error {
 	f := op.GetFactory()
-	if f == common.HexToAddress("0x") {
+	if f == (common.Address{}) {
 		return nil
 	}
 	return nil
