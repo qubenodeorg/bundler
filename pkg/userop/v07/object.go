@@ -75,6 +75,16 @@ type UserOperation struct {
 	Signature                     []byte         `json:"signature"                     mapstructure:"signature"                     validate:"required"`
 }
 
+// GetSender returns the sender address.
+func (op *UserOperation) GetSender() common.Address {
+	return op.Sender
+}
+
+// GetMaxFeePerGas returns the max fee per gas.
+func (op *UserOperation) GetMaxFeePerGas() *big.Int {
+	return op.MaxFeePerGas
+}
+
 // GetPaymaster returns the paymaster address.
 func (op *UserOperation) GetPaymaster() common.Address {
 	return op.Paymaster
@@ -117,8 +127,8 @@ func (op *UserOperation) GetDynamicGasPrice(basefee *big.Int) *big.Int {
 	return gp
 }
 
-// accountGasLimits packs verificationGasLimit and callGasLimit into bytes32.
-func (op *UserOperation) accountGasLimits() [32]byte {
+// AccountGasLimits packs verificationGasLimit and callGasLimit into bytes32.
+func (op *UserOperation) AccountGasLimits() [32]byte {
 	vg := new(big.Int).And(op.VerificationGasLimit, maxUint128)
 	cg := new(big.Int).And(op.CallGasLimit, maxUint128)
 	packed := new(big.Int).Lsh(vg, 128)
@@ -126,8 +136,8 @@ func (op *UserOperation) accountGasLimits() [32]byte {
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 
-// gasFees packs maxFeePerGas and maxPriorityFeePerGas into bytes32.
-func (op *UserOperation) gasFees() [32]byte {
+// GasFees packs maxFeePerGas and maxPriorityFeePerGas into bytes32.
+func (op *UserOperation) GasFees() [32]byte {
 	mf := new(big.Int).And(op.MaxFeePerGas, maxUint128)
 	mp := new(big.Int).And(op.MaxPriorityFeePerGas, maxUint128)
 	packed := new(big.Int).Lsh(mf, 128)
@@ -135,8 +145,8 @@ func (op *UserOperation) gasFees() [32]byte {
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 
-// packPaymasterAndData packs paymaster fields into paymasterAndData bytes.
-func (op *UserOperation) packPaymasterAndData() []byte {
+// PackPaymasterAndData packs paymaster fields into paymasterAndData bytes.
+func (op *UserOperation) PackPaymasterAndData() []byte {
 	if op.Paymaster == common.HexToAddress("0x") {
 		return []byte{}
 	}
@@ -150,8 +160,8 @@ func (op *UserOperation) packPaymasterAndData() []byte {
 	return data
 }
 
-// packInitCode packs factory fields into initCode bytes.
-func (op *UserOperation) packInitCode() []byte {
+// PackInitCode packs factory fields into initCode bytes.
+func (op *UserOperation) PackInitCode() []byte {
 	if op.Factory == common.HexToAddress("0x") {
 		return []byte{}
 	}
@@ -178,12 +188,12 @@ func (op *UserOperation) Pack() []byte {
 	}{
 		op.Sender,
 		op.Nonce,
-		op.packInitCode(),
+		op.PackInitCode(),
 		op.CallData,
-		op.accountGasLimits(),
+		op.AccountGasLimits(),
 		op.PreVerificationGas,
-		op.gasFees(),
-		op.packPaymasterAndData(),
+		op.GasFees(),
+		op.PackPaymasterAndData(),
 		op.Signature,
 	})
 
@@ -208,12 +218,12 @@ func (op *UserOperation) PackForSignature() []byte {
 	packed, _ := args.Pack(
 		op.Sender,
 		op.Nonce,
-		crypto.Keccak256Hash(op.packInitCode()),
+		crypto.Keccak256Hash(op.PackInitCode()),
 		crypto.Keccak256Hash(op.CallData),
-		op.accountGasLimits(),
+		op.AccountGasLimits(),
 		op.PreVerificationGas,
-		op.gasFees(),
-		crypto.Keccak256Hash(op.packPaymasterAndData()),
+		op.GasFees(),
+		crypto.Keccak256Hash(op.PackPaymasterAndData()),
 	)
 	return packed
 }

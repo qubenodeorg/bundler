@@ -27,9 +27,11 @@ const (
 
 // UserOperationInterface defines the common methods across all UserOperation versions.
 type UserOperationInterface interface {
+	GetSender() common.Address
 	GetPaymaster() common.Address
 	GetFactory() common.Address
 	GetFactoryData() []byte
+	GetMaxFeePerGas() *big.Int
 	GetMaxGasAvailable() *big.Int
 	GetMaxPrefund() *big.Int
 	GetDynamicGasPrice(basefee *big.Int) *big.Int

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -55,6 +56,9 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if in.TraceFeeCap != nil {
 		mf = in.TraceFeeCap
 	}
+	if mf == nil {
+		mf = big.NewInt(0)
+	}
 	tx, err := ep.SimulateHandleOp(auth, entrypoint.UserOperation(*in.Op), in.Target, in.Data)
 	if err != nil {
 		return nil, err
@@ -75,7 +79,8 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
 		return nil, err
 	}
-	callTrace, err := ProcessBundlerExecution(&call)
+	epAddr := strings.ToLower(in.EntryPoint.Hex())
+	callTrace, err := ProcessBundlerExecution(&call, epAddr)
 	if err != nil {
 		return nil, err
 	}
