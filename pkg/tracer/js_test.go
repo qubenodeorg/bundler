@@ -1,0 +1,425 @@
+package tracer
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/dop251/goja"
+	"github.com/zarbanio/bundler/pkg/userop"
+)
+
+// jsHelpers defines the small helper surface (toHex, toAddress, toWord) that
+// the Geth-style tracers depend on. We mimic the parts needed by our tests.
+const jsHelpers = `
+function toHex(v) {
+    if (v === null || v === undefined) return "0x";
+    if (typeof v === "string") {
+        if (v.startsWith("0x")) return v;
+        if (v.length === 0) return "0x";
+        // Try hex first (most common EVM value format), then decimal.
+        try { return "0x" + BigInt(v).toString(16); } catch (e) {}
+        return "0x";
+    }
+    if (typeof v === "number" || typeof v === "bigint") {
+        return "0x" + BigInt(v).toString(16);
+    }
+    if (Array.isArray(v)) {
+        // Byte array (memory slice): join each byte as 2-hex.
+        var s = "0x";
+        for (var i = 0; i < v.length; i++) {
+            var b = Number(v[i]) & 0xff;
+            var h = b.toString(16);
+            if (h.length < 2) h = "0" + h;
+            s += h;
+        }
+        return s;
+    }
+    if (typeof v === "object") {
+        if (v.hex && typeof v.hex === "string") return v.hex;
+        if (v.toString) {
+            var s = v.toString();
+            if (typeof s === "string") {
+                if (s.startsWith("0x")) return s;
+                try { return "0x" + BigInt(s).toString(16); } catch (e) {}
+            }
+        }
+    }
+    return "0x";
+}
+function toAddress(v) {
+    if (typeof v === "string") {
+        if (v.startsWith("0x")) {
+            // Pad to 40 hex chars (20 bytes) like a real address.
+            var s = v.slice(2);
+            while (s.length < 40) s = "0" + s;
+            return "0x" + s;
+        }
+        // BigInt.toString(16) returns the hex without prefix. Wrap as object.
+        return { hex: "0x" + v };
+    }
+    return v;
+}
+function toWord(v) { return v; }
+`
+
+// runCollectorJS loads a v0.6/v0.7/v0.8/v0.9 collector tracer into a fresh
+// goja runtime together with the helper stubs. It returns the runtime so the
+// caller can drive step/fault/result manually.
+func runCollectorJS(t *testing.T, v userop.Version) *goja.Runtime {
+	t.Helper()
+	ts, err := NewTracers()
+	if err != nil {
+		t.Fatalf("NewTracers: %v", err)
+	}
+	set, err := ts.ForVersion(v, "")
+	if err != nil {
+		t.Fatalf("ForVersion %s: %v", v, err)
+	}
+	rt := goja.New()
+	mustRun(t, rt, jsHelpers)
+	mustRun(t, rt, "var tracer = "+set.Collector+";")
+	return rt
+}
+
+// runExecutionJS loads an execution tracer into a fresh runtime.
+func runExecutionJS(t *testing.T, v userop.Version, entryPoint string) *goja.Runtime {
+	t.Helper()
+	ts, err := NewTracers()
+	if err != nil {
+		t.Fatalf("NewTracers: %v", err)
+	}
+	set, err := ts.ForVersion(v, entryPoint)
+	if err != nil {
+		t.Fatalf("ForVersion %s: %v", v, err)
+	}
+	rt := goja.New()
+	mustRun(t, rt, jsHelpers)
+	mustRun(t, rt, "var tracer = "+set.Execution+";")
+	return rt
+}
+
+func mustRun(t *testing.T, rt *goja.Runtime, src string) {
+	t.Helper()
+	if _, err := rt.RunString(src); err != nil {
+		t.Fatalf("goja: %v\nsource:\n%s", err, src)
+	}
+}
+
+// stepLog is a minimal stand-in for the Getg EVM step log. We only populate
+// the fields that the tracers actually read.
+type stepLog struct {
+	Op       string
+	Gas      int64
+	Cost     int64
+	Depth    int
+	Memory   []byte
+	StackTop []string
+	Contract string
+	Address  string
+}
+
+// callJS invokes tracer.step(log) with a JavaScript object built from the Go
+// stepLog. It avoids depending on Getg struct shapes.
+func callJS(t *testing.T, rt *goja.Runtime, method string, log *stepLog) {
+	t.Helper()
+	if log == nil {
+		mustRun(t, rt, "tracer."+method+"(null, null);")
+		return
+	}
+	stackJSON := "["
+	for i, v := range log.StackTop {
+		if i > 0 {
+			stackJSON += ","
+		}
+		stackJSON += fmt.Sprintf("%q", v)
+	}
+	stackJSON += "]"
+	mustRun(t, rt, "var __stack = "+stackJSON+";")
+
+	src := fmt.Sprintf(
+		"tracer.%s({op: %q, getDepth: function(){return %d}, getGas: function(){return %d}, getCost: function(){return %d}, stack: {length: function(){return %d}, peek: function(i){return BigInt(__stack[i])}}, memory: {slice: function(o,l){return []}}, contract: {getAddress: function(){return %q}}, getError: function(){return null}}, {getCode: function(a){return ''}});",
+		method, log.Op, log.Depth, log.Gas, log.Cost, len(log.StackTop), log.Contract,
+	)
+	mustRun(t, rt, src)
+}
+
+func getInt(t *testing.T, rt *goja.Runtime, expr string) int {
+	t.Helper()
+	v, err := rt.RunString(expr)
+	if err != nil {
+		t.Fatalf("%s: %v", expr, err)
+	}
+	return int(v.ToInteger())
+}
+
+func getString(t *testing.T, rt *goja.Runtime, expr string) string {
+	t.Helper()
+	v, err := rt.RunString(expr)
+	if err != nil {
+		t.Fatalf("%s: %v", expr, err)
+	}
+	return v.String()
+}
+
+// ---- Collector tracer tests ----
+
+func TestCollector_StopsAtBeforeExecutionTopic(t *testing.T) {
+	rt := runCollectorJS(t, userop.V0_7)
+	// Depth-1 LOG1 with the stop-collecting topic.
+	callJS(t, rt, "step", &stepLog{
+		Op:    "LOG1",
+		Depth: 1,
+		StackTop: []string{
+			"0x0",
+			"0x0",
+			"0xbb47ee3e183a558b1a2ff0874b079f3fc5478b7454eacf2bfc5af2ff5878f972",
+		},
+	})
+	stop := getInt(t, rt, "tracer.stopCollecting ? 1 : 0")
+	if stop != 1 {
+		t.Errorf("stopCollecting should be true after BeforeExecution log, got %d", stop)
+	}
+}
+
+func TestCollector_CountsOpcodes(t *testing.T) {
+	for _, v := range []userop.Version{userop.V0_7, userop.V0_8, userop.V0_9} {
+		v := v
+		t.Run(string(v), func(t *testing.T) {
+			rt := runCollectorJS(t, v)
+
+			// Top-level CALL to enter the "current level".
+			callJS(t, rt, "step", &stepLog{
+				Op:       "CALL",
+				Depth:    1,
+				Gas:      10000,
+				Cost:     100,
+				StackTop: []string{"0x0", "0x1111111111111111111111111111111111111111", "0x0", "0x0", "0x0", "0x0", "0x0"},
+			})
+
+			// Subsequent steps at depth 2 count opcodes.
+			for i := 0; i < 3; i++ {
+				callJS(t, rt, "step", &stepLog{
+					Op:       "TSTORE",
+					Depth:    2,
+					Gas:      1000,
+					Cost:     100,
+					StackTop: []string{"0x0", "0x0"},
+				})
+			}
+			callJS(t, rt, "step", &stepLog{
+				Op:       "TLOAD",
+				Depth:    2,
+				Gas:      1000,
+				Cost:     100,
+				StackTop: []string{"0x0"},
+			})
+
+			tstore := getInt(t, rt, "tracer.currentLevel.opcodes.TSTORE || 0")
+			tload := getInt(t, rt, "tracer.currentLevel.opcodes.TLOAD || 0")
+			if tstore != 3 {
+				t.Errorf("TSTORE: got %d, want 3", tstore)
+			}
+			if tload != 1 {
+				t.Errorf("TLOAD: got %d, want 1", tload)
+			}
+		})
+	}
+}
+
+func TestCollector_MarksOOGOnGasUnderrun(t *testing.T) {
+	rt := runCollectorJS(t, userop.V0_7)
+	// Enter a current level.
+	callJS(t, rt, "step", &stepLog{
+		Op:       "CALL",
+		Depth:    1,
+		Gas:      10000,
+		Cost:     100,
+		StackTop: []string{"0x0", "0x1111111111111111111111111111111111111111", "0x0", "0x0", "0x0", "0x0", "0x0"},
+	})
+	// Step that runs out of gas.
+	callJS(t, rt, "step", &stepLog{
+		Op:       "CALL",
+		Depth:    2,
+		Gas:      50,
+		Cost:     100,
+		StackTop: []string{"0x0", "0x2222222222222222222222222222222222222222", "0x0", "0x0", "0x0", "0x0", "0x0"},
+	})
+	oog := getInt(t, rt, "tracer.currentLevel.oog ? 1 : 0")
+	if oog != 1 {
+		t.Errorf("expected oog=true, got %d", oog)
+	}
+}
+
+func TestCollector_V09_ResultHasExpectedShape(t *testing.T) {
+	rt := runCollectorJS(t, userop.V0_9)
+	mustRun(t, rt, "var r = tracer.result({}, {});")
+	res := getString(t, rt, "JSON.stringify(r)")
+	for _, key := range []string{
+		"callsFromEntryPoint",
+		"keccak",
+		"logs",
+		"calls",
+		"debug",
+	} {
+		if !strings.Contains(res, key) {
+			t.Errorf("v0.9 result should include key %q; got %s", key, res)
+		}
+	}
+}
+
+// ---- Execution tracer tests ----
+
+func TestExecution_MarkersAdvanceOnNumberV07(t *testing.T) {
+	rt := runExecutionJS(t, userop.V0_7, "")
+	for i := 0; i < 3; i++ {
+		callJS(t, rt, "step", &stepLog{
+			Op:    "NUMBER",
+			Depth: 1,
+			Gas:   100,
+			Cost:  2,
+		})
+	}
+	marker := getInt(t, rt, "tracer._marker")
+	if marker != 3 {
+		t.Errorf("expected _marker=3, got %d", marker)
+	}
+	if getInt(t, rt, "tracer._isExecution() ? 1 : 0") != 1 {
+		t.Errorf("expected _isExecution()=true")
+	}
+}
+
+func TestExecution_ValidationOOG(t *testing.T) {
+	rt := runExecutionJS(t, userop.V0_7, "")
+	// One NUMBER -> marker 1, which makes _isValidation() true.
+	callJS(t, rt, "step", &stepLog{Op: "NUMBER", Depth: 1, Gas: 100, Cost: 2})
+	// Then a step with gas < cost while in validation.
+	callJS(t, rt, "step", &stepLog{Op: "CALL", Depth: 2, Gas: 1, Cost: 100})
+	if getInt(t, rt, "tracer.validationOOG ? 1 : 0") != 1 {
+		t.Errorf("expected validationOOG=true")
+	}
+}
+
+func TestExecution_ExecutionOOG(t *testing.T) {
+	rt := runExecutionJS(t, userop.V0_7, "")
+	// Three NUMBERs -> _marker=3 -> _isExecution() true.
+	for i := 0; i < 3; i++ {
+		callJS(t, rt, "step", &stepLog{Op: "NUMBER", Depth: 1, Gas: 100, Cost: 2})
+	}
+	callJS(t, rt, "step", &stepLog{Op: "CALL", Depth: 2, Gas: 1, Cost: 100})
+	if getInt(t, rt, "tracer.executionOOG ? 1 : 0") != 1 {
+		t.Errorf("expected executionOOG=true")
+	}
+}
+
+func TestExecution_CapturesUserOpEventV09(t *testing.T) {
+	rt := runExecutionJS(t, userop.V0_9, "")
+	// Move into execution region (3 NUMBERs).
+	for i := 0; i < 3; i++ {
+		callJS(t, rt, "step", &stepLog{Op: "NUMBER", Depth: 1, Gas: 100, Cost: 2})
+	}
+	// Build a LOG3 with the userOpEvent topic. The tracer reads ofs, len
+	// from peek(0) and peek(1) and topics[0] from peek(2). Provide 5 stack
+	// slots so all peeks succeed. The expected topic is
+	// 0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f.
+	callJS(t, rt, "step", &stepLog{
+		Op:    "LOG3",
+		Depth: 2,
+		Gas:   1000,
+		Cost:  100,
+		StackTop: []string{
+			"0x0",
+			"0x0",
+			"0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f",
+			"0x1",
+			"0x2",
+		},
+	})
+	uop := getString(t, rt, "JSON.stringify(tracer.userOperationEvent || null)")
+	if uop == "null" || uop == "" {
+		t.Errorf("userOperationEvent not captured; got %s", uop)
+	}
+}
+
+func TestExecution_CapturesGetCurrentUserOpHashV09(t *testing.T) {
+	ep := "0x433709009b8330fda32311df1c2afa402ed8d009"
+	rt := runExecutionJS(t, userop.V0_9, ep)
+	// Move into execution region.
+	for i := 0; i < 3; i++ {
+		callJS(t, rt, "step", &stepLog{Op: "NUMBER", Depth: 1, Gas: 100, Cost: 2})
+	}
+
+	// Build a small memory that contains the getCurrentUserOpHash selector
+	// (0x60e6b9fb) at offset 0 and is large enough for the slice.
+	mustRun(t, rt, `
+var __mem = [0x60, 0xe6, 0xb9, 0xfb];
+for (var i = 4; i < 64; i++) __mem.push(0);
+`)
+
+	// Staticcall to the EntryPoint with selector getCurrentUserOpHash.
+	// STATICCALL stack layout: gas(0), addr(1), argsOffset(2), argsLength(3), retOffset(4), retLength(5).
+	mustRun(t, rt, fmt.Sprintf(`
+tracer.step({
+  op: "STATICCALL",
+  getDepth: function(){return 2},
+  getGas: function(){return 1000},
+  getCost: function(){return 100},
+  stack: {
+    length: function(){return 7},
+    peek: function(i){
+      var s = ["0x64", %q, "0x0", "0x4", "0x0", "0x20", "0x0"];
+      return s[i];
+    }
+  },
+  memory: {slice: function(o,l){
+    var out = [];
+    for (var i = o; i < o + l && i < __mem.length; i++) out.push(__mem[i]);
+    return out;
+  }},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`, ep))
+
+	// The tracer pushes a pending capture; now simulate a RETURN that
+	// consumes it. We use the same STATICCALL return path that
+	// _consumePendingGetCurrentUserOpHash expects.
+	mustRun(t, rt, `
+tracer.step({
+  op: "RETURN",
+  getDepth: function(){return 2},
+  getGas: function(){return 100},
+  getCost: function(){return 0},
+  stack: {length: function(){return 2}, peek: function(i){return i === 0 ? "0x0" : "0x20"}},
+  memory: {slice: function(o,l){
+    var out = [];
+    for (var i = 0; i < 32; i++) out.push(0xaa);
+    return out;
+  }},
+  contract: {getAddress: function(){return "0x"}},
+  getError: function(){return null}
+}, {getCode: function(a){return ""}});
+`)
+
+	count := getInt(t, rt, "(tracer.currentUserOpHashes || []).length")
+	if count < 1 {
+		t.Errorf("expected at least one currentUserOpHash capture, got %d", count)
+	}
+}
+
+func TestExecution_V06V07V08_NoCurrentUserOpHash(t *testing.T) {
+	for _, v := range []userop.Version{userop.V0_6, userop.V0_7, userop.V0_8} {
+		v := v
+		t.Run(string(v), func(t *testing.T) {
+			rt := runExecutionJS(t, v, "")
+			if rt == nil {
+				t.Fatal("runtime is nil")
+			}
+			// The field should be undefined.
+			has := getInt(t, rt, "typeof tracer.currentUserOpHashes === 'undefined' ? 1 : 0")
+			if has != 1 {
+				t.Errorf("%s should not define currentUserOpHashes", v)
+			}
+		})
+	}
+}
