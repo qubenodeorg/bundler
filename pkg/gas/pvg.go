@@ -55,7 +55,18 @@ func CalcArbitrumPVGWithEthClient(
 
 		pmHex := fieldToHexStr(data, "paymasterAndData")
 		if pmHex == "0x" {
-			pmHex = fieldToHexStr(data, "paymasterData")
+			// v0.7+: paymasterAndData is packed as address(20) + gasLimits(32) + paymasterData
+			if pmAddr := fieldToHexStr(data, "paymaster"); pmAddr != "0x" && common.HexToAddress(pmAddr) != (common.Address{}) {
+				dummyGasLimits := "0000000000000000000000000000000000000000000000000000000000000000"
+				pmData := fieldToHexStr(data, "paymasterData")
+				if len(pmData) > 2 {
+					pmHex = pmAddr + dummyGasLimits + pmData[2:]
+				} else {
+					pmHex = pmAddr + dummyGasLimits
+				}
+			} else {
+				pmHex = fieldToHexStr(data, "paymasterData")
+			}
 		}
 		pmBytes, decErr := hexutil.Decode(pmHex)
 		if decErr != nil {

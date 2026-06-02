@@ -259,15 +259,17 @@ func ConvertToV06(op userop.UserOperationInterface) (*userop.UserOperation, erro
 	}
 
 	if _, hasPM := data["paymasterAndData"]; !hasPM {
-		if pm, ok := data["paymaster"].(string); ok && pm != "0x0000000000000000000000000000000000000000" {
+		if pm, ok := data["paymaster"].(string); ok && common.HexToAddress(pm) != (common.Address{}) {
 			pmData := "0x"
 			if d, ok := data["paymasterData"].(string); ok {
 				pmData = d
 			}
+			// v0.7+ packed paymasterAndData: address(20) + gasLimits(32) + data
+			dummyGasLimits := "0000000000000000000000000000000000000000000000000000000000000000"
 			if len(pmData) > 2 {
-				data["paymasterAndData"] = pm + pmData[2:]
+				data["paymasterAndData"] = pm + dummyGasLimits + pmData[2:]
 			} else {
-				data["paymasterAndData"] = pm
+				data["paymasterAndData"] = pm + dummyGasLimits
 			}
 		} else {
 			data["paymasterAndData"] = "0x"

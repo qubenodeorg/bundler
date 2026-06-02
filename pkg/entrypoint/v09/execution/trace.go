@@ -68,6 +68,9 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if in.TraceFeeCap != nil {
 		mf = in.TraceFeeCap
 	}
+	if mf == nil {
+		mf = big.NewInt(0)
+	}
 
 	out := &TraceOutput{}
 	var call v06exec.Call
