@@ -112,3 +112,35 @@ func TestSuggestMeanGasPriceForHighLoad(t *testing.T) {
 		t.Fatalf("got %d, want %d", gp.Int64(), expected.Int64())
 	}
 }
+
+// TestSuggestMeanGasTipCapEmptyBatch verifies that SuggestMeanGasTipCap does not
+// panic and returns the supplied tip when the batch is empty.
+func TestSuggestMeanGasTipCapEmptyBatch(t *testing.T) {
+	tip := big.NewInt(5)
+	got := SuggestMeanGasTipCap(tip, nil)
+	if got.Cmp(tip) != 0 {
+		t.Fatalf("got %d, want %d", got.Int64(), tip.Int64())
+	}
+}
+
+// TestSuggestMeanGasFeeCapEmptyBatch verifies that SuggestMeanGasFeeCap does not
+// panic and returns the recommended max fee when the batch is empty.
+func TestSuggestMeanGasFeeCapEmptyBatch(t *testing.T) {
+	bf := big.NewInt(1)
+	tip := big.NewInt(3)
+	got := SuggestMeanGasFeeCap(bf, tip, nil)
+	want := big.NewInt(0).Add(tip, big.NewInt(0).Mul(bf, common.Big2))
+	if got.Cmp(want) != 0 {
+		t.Fatalf("got %d, want %d", got.Int64(), want.Int64())
+	}
+}
+
+// TestSuggestMeanGasPriceEmptyBatch verifies that SuggestMeanGasPrice does not
+// panic and returns the supplied gasPrice when the batch is empty.
+func TestSuggestMeanGasPriceEmptyBatch(t *testing.T) {
+	gasPrice := big.NewInt(7)
+	got := SuggestMeanGasPrice(gasPrice, nil)
+	if got.Cmp(gasPrice) != 0 {
+		t.Fatalf("got %d, want %d", got.Int64(), gasPrice.Int64())
+	}
+}

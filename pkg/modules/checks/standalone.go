@@ -80,14 +80,15 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 
 		switch ctx.Version {
 		case userop.V0_6:
-			g.Go(func() error { return ValidateSender(ctx.UserOp, gc) })
-			g.Go(func() error { return ValidateInitCode(ctx.UserOp) })
-			g.Go(func() error { return ValidateVerificationGas(ctx.UserOp, s.ov, s.maxVerificationGas) })
-			g.Go(func() error { return ValidatePaymasterAndData(ctx.UserOp, ctx.GetPaymasterDepositInfo(), gc) })
-			g.Go(func() error { return ValidateCallGasLimit(ctx.UserOp, s.ov) })
-			g.Go(func() error { return ValidateFeePerGas(ctx.UserOp, gasprice.GetBaseFeeWithEthClient(s.eth)) })
-			g.Go(func() error { return ValidatePendingOps(ctx.UserOp, ctx.GetPendingSenderOps()) })
-			g.Go(func() error { return ValidateGasAvailable(ctx.UserOp, s.maxBatchGasLimit) })
+			op := ctx.UserOp.(*userop.UserOperation)
+			g.Go(func() error { return ValidateSender(op, gc) })
+			g.Go(func() error { return ValidateInitCode(op) })
+			g.Go(func() error { return ValidateVerificationGas(op, s.ov, s.maxVerificationGas) })
+			g.Go(func() error { return ValidatePaymasterAndData(op, ctx.GetPaymasterDepositInfo(), gc) })
+			g.Go(func() error { return ValidateCallGasLimit(op, s.ov) })
+			g.Go(func() error { return ValidateFeePerGas(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
+			g.Go(func() error { return ValidatePendingOps(op, ctx.GetPendingSenderOps()) })
+			g.Go(func() error { return ValidateGasAvailable(op, s.maxBatchGasLimit) })
 		default:
 			// v0.7+ uses the interface-based validation functions
 			op := ctx.UserOp
@@ -129,8 +130,9 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 
 		switch ctx.Version {
 		case userop.V0_6:
+			op := ctx.UserOp.(*userop.UserOperation)
 			g.Go(func() error {
-				sim, err := simulation.SimulateValidation(s.rpc, ctx.EntryPoint, ctx.UserOp)
+				sim, err := simulation.SimulateValidation(s.rpc, ctx.EntryPoint, op)
 				if err != nil {
 					return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, err.Error(), err.Error())
 				}
@@ -154,7 +156,21 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 		default:
 			// v0.7+: off-chain simulation only (simulateValidation removed from deployed contract)
 			g.Go(func() error {
-				return SimulateValidationV07(s.rpc, ctx.EntryPoint, ctx.UserOp, ctx.ChainID, s.ov, s.alt, s.isRIP7212Supported, s.tracer)
+				return SimulateValidationV07(
+					s.rpc,
+					ctx.EntryPoint,
+					ctx.UserOp,
+					ctx.ChainID,
+					s.ov,
+					s.alt,
+					s.isRIP7212Supported,
+					s.tracer,
+					simulation.EntityStakes{
+						ctx.UserOp.GetSender():   ctx.GetSenderDepositInfo(),
+						ctx.UserOp.GetFactory():  ctx.GetFactoryDepositInfo(),
+						ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
+					},
+				)
 			})
 		}
 

@@ -58,21 +58,14 @@ func ValidatePaymaster(
 	op userop.UserOperationInterface,
 	dep *entrypoint.IStakeManagerDepositInfo,
 	gc GetCodeFunc,
-	version userop.Version,
+	_ userop.Version,
 ) error {
-	pm := op.GetPaymaster()
-
-	// v0.8+: reject zero-address paymaster if paymasterData is non-empty
-	if version == userop.V0_8 || version == userop.V0_9 {
-		if pm == (common.Address{}) && len(op.GetPaymasterData()) > 0 {
-			return ErrPaymasterZeroAddrWithData
-		}
-	}
-
-	if pm == (common.Address{}) {
+	// Zero-address paymaster validation is handled in ValidatePaymasterData.
+	if op.GetPaymaster() == (common.Address{}) {
 		return nil
 	}
 
+	pm := op.GetPaymaster()
 	bytecode, err := gc(pm)
 	if err != nil {
 		return err
@@ -88,11 +81,11 @@ func ValidatePaymaster(
 	return nil
 }
 
-// ValidatePaymasterData validates the paymaster data format.
-func ValidatePaymasterData(op userop.UserOperationInterface, version userop.Version) error {
-	pm := op.GetPaymaster()
-	if pm == (common.Address{}) {
-		if len(op.GetPaymasterData()) > 0 && version == userop.V0_7 {
+// ValidatePaymasterData validates the paymaster data format. A zero-address
+// paymaster with non-empty paymasterData is rejected for all versions.
+func ValidatePaymasterData(op userop.UserOperationInterface, _ userop.Version) error {
+	if op.GetPaymaster() == (common.Address{}) {
+		if len(op.GetPaymasterData()) > 0 {
 			return ErrPaymasterZeroAddrWithData
 		}
 		return nil

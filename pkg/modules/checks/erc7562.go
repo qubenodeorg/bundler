@@ -18,7 +18,7 @@ var (
 )
 
 // ValidateERC7562Rules runs the ERC-7562 validation rule set on a UserOperation.
-func ValidateERC7562Rules(op *userop.UserOperation, entryPoint common.Address) error {
+func ValidateERC7562Rules(op userop.UserOperationInterface, entryPoint common.Address) error {
 	if err := validateOP013UnassignedOpcodes(); err != nil {
 		return err
 	}

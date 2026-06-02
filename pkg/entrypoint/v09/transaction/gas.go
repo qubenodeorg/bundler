@@ -8,6 +8,9 @@ import (
 )
 
 func SuggestMeanGasTipCap(tip *big.Int, batch []*userop.UserOperation) *big.Int {
+	if len(batch) == 0 {
+		return tip
+	}
 	sum := big.NewInt(0)
 	for _, op := range batch {
 		sum = big.NewInt(0).Add(sum, op.MaxPriorityFeePerGas)
@@ -21,6 +24,9 @@ func SuggestMeanGasTipCap(tip *big.Int, batch []*userop.UserOperation) *big.Int 
 
 func SuggestMeanGasFeeCap(basefee *big.Int, tip *big.Int, batch []*userop.UserOperation) *big.Int {
 	mf := big.NewInt(0).Add(tip, big.NewInt(0).Mul(basefee, common.Big2))
+	if len(batch) == 0 {
+		return mf
+	}
 	sum := big.NewInt(0)
 	for _, op := range batch {
 		sum = big.NewInt(0).Add(sum, op.MaxFeePerGas)
@@ -33,6 +39,9 @@ func SuggestMeanGasFeeCap(basefee *big.Int, tip *big.Int, batch []*userop.UserOp
 }
 
 func SuggestMeanGasPrice(gasPrice *big.Int, batch []*userop.UserOperation) *big.Int {
+	if len(batch) == 0 {
+		return gasPrice
+	}
 	sum := big.NewInt(0)
 	for _, op := range batch {
 		sum = big.NewInt(0).Add(sum, op.MaxFeePerGas)

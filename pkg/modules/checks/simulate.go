@@ -18,43 +18,43 @@ import (
 func SimulateValidationV07(
 	rpc *rpc.Client,
 	entryPoint common.Address,
-	op *userop.UserOperation,
+	op userop.UserOperationInterface,
 	chainID *big.Int,
 	ov *gas.Overhead,
 	alt *altmempools.Directory,
 	isRIP7212Supported bool,
 	tracer string,
+	stakes simulation.EntityStakes,
 ) error {
 	// Try trace-based simulation (deep validation with opcode/storage checks)
-	return simulateWithTrace(rpc, entryPoint, op, chainID, ov, alt, isRIP7212Supported, tracer)
+	return simulateWithTrace(rpc, entryPoint, op, chainID, ov, alt, isRIP7212Supported, tracer, stakes)
 }
 
 // simulateWithTrace uses debug_traceCall for validation simulation.
 func simulateWithTrace(
 	rpc *rpc.Client,
 	entryPoint common.Address,
-	op *userop.UserOperation,
+	op userop.UserOperationInterface,
 	chainID *big.Int,
 	ov *gas.Overhead,
 	alt *altmempools.Directory,
 	isRIP7212Supported bool,
 	tracer string,
+	stakes simulation.EntityStakes,
 ) error {
-	// Build stakes map from the operation entities
-	stakes := simulation.EntityStakes{
-		op.Sender: {Deposit: big.NewInt(0), Stake: big.NewInt(0)},
-	}
-	if factory := op.GetFactory(); factory != (common.Address{}) {
-		stakes[factory] = stakes[op.Sender]
-	}
-	if paymaster := op.GetPaymaster(); paymaster != (common.Address{}) {
-		stakes[paymaster] = stakes[op.Sender]
+	v06Op, ok := op.(*userop.UserOperation)
+	if !ok {
+		return errors.NewRPCError(
+			errors.BANNED_OPCODE,
+			"v0.7+ simulation expects a *userop.UserOperation",
+			nil,
+		)
 	}
 
 	out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
 		Rpc:                rpc,
 		EntryPoint:         entryPoint,
-		Op:                 op,
+		Op:                 v06Op,
 		ChainID:            chainID,
 		IsRIP7212Supported: isRIP7212Supported,
 		Tracer:             tracer,

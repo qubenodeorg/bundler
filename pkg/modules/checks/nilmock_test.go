@@ -23,6 +23,7 @@ type partialNilOp struct {
 	overridePaymasterVGL  *big.Int
 	overridePaymasterPOGL *big.Int
 	overrideMaxGasAvail   *big.Int
+	overridePaymasterData []byte
 }
 
 func (p *partialNilOp) GetNonce() *big.Int {
@@ -95,4 +96,11 @@ func (p *partialNilOp) GetMaxGasAvailable() *big.Int {
 		return p.overrideMaxGasAvail
 	}
 	return p.UserOperationInterface.GetMaxGasAvailable()
+}
+
+func (p *partialNilOp) GetPaymasterData() []byte {
+	if p.overridePaymasterData != nil {
+		return p.overridePaymasterData
+	}
+	return p.UserOperationInterface.GetPaymasterData()
 }

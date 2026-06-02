@@ -23,7 +23,6 @@ import (
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
-// TraceInput defines the parameters for trace-based validation simulation.
 type TraceInput struct {
 	Rpc                *rpc.Client
 	EntryPoint         common.Address
@@ -35,14 +34,11 @@ type TraceInput struct {
 	AltMempools        *altmempools.Directory
 }
 
-// TraceOutput holds the results of trace-based simulation.
 type TraceOutput struct {
 	TouchedContracts []common.Address
 	AltMempoolIds    []string
 }
 
-// TraceSimulateValidation performs a debug_traceCall to simulate validation for v0.7+.
-// It uses HandleOps instead of simulateValidation (which was removed in v0.7).
 func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 	ep, err := v07.NewV07(in.EntryPoint, ethclient.NewClient(in.Rpc))
 	if err != nil {
@@ -82,7 +78,16 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	knownEntity, err := simutils.NewKnownEntity(in.Op, &res, in.Stakes)
+	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, &res)
+}
+
+func ProcessTraceResult(
+	op *userop.UserOperation,
+	entryPoint common.Address,
+	stakes simutils.EntityStakes,
+	res *tracer.BundlerCollectorReturn,
+) (*TraceOutput, error) {
+	knownEntity, err := simutils.NewKnownEntity(op, res, stakes)
 	altMempoolIds := []string{}
 	if err != nil {
 		return nil, err
@@ -93,7 +98,7 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		if entity.Info.OOG {
 			return nil, fmt.Errorf("%s OOG", title)
 		}
-		if _, ok := entity.Info.ExtCodeAccessInfo[in.EntryPoint]; ok {
+		if _, ok := entity.Info.ExtCodeAccessInfo[entryPoint]; ok {
 			return nil, fmt.Errorf("%s has forbidden EXTCODE* access to the EntryPoint", title)
 		}
 		for opcode := range entity.Info.Opcodes {
@@ -120,16 +125,16 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 			if len(out.Context) != 0 && !knownEntity["paymaster"].IsStaked {
 				return nil, errors.New("unstaked paymaster must not return context")
 			}
-		} else if call.To == in.EntryPoint && call.Method == methods.BalanceOfSelector {
+		} else if call.To == entryPoint && call.Method == methods.BalanceOfSelector {
 			return nil, fmt.Errorf(
 				"%s cannot call balanceOf on EntryPoint",
-				simutils.Addr2KnownEntity(in.Op, call.From),
+				simutils.Addr2KnownEntity(op, call.From),
 			)
-		} else if call.To != in.EntryPoint && call.Value.Cmp(common.Big0) == 1 {
+		} else if call.To != entryPoint && call.Value.Cmp(common.Big0) == 1 {
 			return nil, fmt.Errorf(
 				"%s has a forbidden value transfer to %s",
-				simutils.Addr2KnownEntity(in.Op, call.From),
-				simutils.Addr2KnownEntity(in.Op, call.To),
+				simutils.Addr2KnownEntity(op, call.From),
+				simutils.Addr2KnownEntity(op, call.To),
 			)
 		}
 	}

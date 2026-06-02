@@ -174,7 +174,7 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 	}
 
 	// Add userOp to mempool.
-	if err := i.mempool.AddOp(epAddr, ctx.UserOp); err != nil {
+	if err := i.mempool.AddOp(epAddr, ctx.UserOp.(*userop.UserOperation)); err != nil {
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
