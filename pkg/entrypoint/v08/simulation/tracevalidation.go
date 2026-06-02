@@ -69,8 +69,12 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		Data:         tx.Data(),
 		MaxFeePerGas: hexutil.Big(*big.NewInt(0)),
 	}
+	collector, err := tracer.Loaded.ForVersion(userop.V0_8, in.EntryPoint.Hex())
+	if err != nil {
+		return nil, err
+	}
 	opts := utils.TraceCallOpts{
-		Tracer:         in.Tracer,
+		Tracer:         collector.Collector,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
 

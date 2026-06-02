@@ -80,8 +80,12 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		Data:         tx.Data(),
 		MaxFeePerGas: hexutil.Big(*mf),
 	}
+	exec, err := tracer.Loaded.ForVersion(userop.V0_8, in.EntryPoint.Hex())
+	if err != nil {
+		return nil, err
+	}
 	opts := utils.TraceCallOpts{
-		Tracer:         in.Tracer,
+		Tracer:         exec.Execution,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), in.Sos),
 	}
 	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {

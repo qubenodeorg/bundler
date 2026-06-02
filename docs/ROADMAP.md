@@ -225,21 +225,25 @@
 **Deliverable**: Validation module compiles
 
 #### Days 11-12: Tracer Updates
-- [ ] Update `pkg/tracer/BundlerCollectorTracer.js`:
+- [x] Update `pkg/tracer/BundlerCollectorTracer.js`:
+  - Handle v0.7 EntryPoint internal function calls
+  - Handle v0.8 EntryPoint internal function calls
   - Handle v0.9 EntryPoint internal function calls
   - Track new validation flow
   - Support TSTORE/TLOAD opcodes
-- [ ] Update `pkg/tracer/BundlerExecutionTracer.js`:
+- [x] Update `pkg/tracer/BundlerExecutionTracer.js`:
   - New execution trace format
   - Capture `getCurrentUserOpHash()` calls
-- [ ] Update `pkg/tracer/types.go`:
+- [x] Update `pkg/tracer/types.go`:
   - New trace return structs
   - EIP-7702 trace data
-- [ ] Update `pkg/tracer/load.go`:
+- [x] Update `pkg/tracer/load.go`:
   - Version-aware tracer loading
-- [ ] Test tracers against v0.9 EntryPoint locally
+- [x] Test tracers against v0.7 EntryPoint locally
+- [x] Test tracers against v0.8 EntryPoint locally
+- [x] Test tracers against v0.9 EntryPoint locally
 
-**Deliverable**: Tracers work with v0.9
+**Deliverable**: Tracers work with v0.7, v0.8, v0.9
 
 #### Days 13-14: Simulation & Execution
 
