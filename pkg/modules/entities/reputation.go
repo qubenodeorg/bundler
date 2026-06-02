@@ -35,18 +35,18 @@ func New(db *badger.DB, eth *ethclient.Client, repConst *ReputationConstants) *R
 func (r *Reputation) CheckStatus() modules.UserOpHandlerFunc {
 	return func(ctx *modules.UserOpHandlerCtx) error {
 		return r.db.Update(func(txn *badger.Txn) error {
-			if status, err := getStatus(txn, ctx.UserOp.Sender, r.repConst); err != nil {
+			if status, err := getStatus(txn, ctx.UserOp.GetSender(), r.repConst); err != nil {
 				return err
 			} else if status == banned {
 				return errors.NewRPCError(
 					errors.BANNED_OR_THROTTLED_ENTITY,
-					fmt.Sprintf("banned entity: %s", ctx.UserOp.Sender.Hex()),
+					fmt.Sprintf("banned entity: %s", ctx.UserOp.GetSender().Hex()),
 					nil,
 				)
 			} else if status == throttled && len(ctx.GetPendingSenderOps()) == r.repConst.ThrottledEntityMempoolCount {
 				return errors.NewRPCError(
 					errors.BANNED_OR_THROTTLED_ENTITY,
-					fmt.Sprintf("throttled entity: %s", ctx.UserOp.Sender.Hex()),
+					fmt.Sprintf("throttled entity: %s", ctx.UserOp.GetSender().Hex()),
 					nil,
 				)
 			}
@@ -105,7 +105,7 @@ func (r *Reputation) ValidateOpLimit() modules.UserOpHandlerFunc {
 				errors.INVALID_ENTITY_STAKE,
 				fmt.Sprintf(
 					"unstaked entity: %s exceeds pending ops limit of %d",
-					ctx.UserOp.Sender.Hex(),
+					ctx.UserOp.GetSender().Hex(),
 					r.repConst.SameSenderMempoolCount,
 				),
 				nil,
@@ -156,7 +156,7 @@ func (r *Reputation) IncOpsSeen() modules.UserOpHandlerFunc {
 	return func(ctx *modules.UserOpHandlerCtx) error {
 		return r.db.Update(func(txn *badger.Txn) error {
 			var err error
-			err = stdErr.Join(err, incrementOpsSeenByEntity(txn, ctx.UserOp.Sender))
+			err = stdErr.Join(err, incrementOpsSeenByEntity(txn, ctx.UserOp.GetSender()))
 
 			factory := ctx.UserOp.GetFactory()
 			if factory != common.HexToAddress("0x") {

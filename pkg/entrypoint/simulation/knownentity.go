@@ -18,6 +18,15 @@ func newKnownEntity(
 	res *tracer.BundlerCollectorReturn,
 	stakes EntityStakes,
 ) (knownEntity, error) {
+	return NewKnownEntity(op, res, stakes)
+}
+
+// NewKnownEntity creates a known entity map from trace results.
+func NewKnownEntity(
+	op *userop.UserOperation,
+	res *tracer.BundlerCollectorReturn,
+	stakes EntityStakes,
+) (knownEntity, error) {
 	si := tracer.CallFromEntryPointInfo{}
 	fi := tracer.CallFromEntryPointInfo{}
 	pi := tracer.CallFromEntryPointInfo{}
@@ -54,6 +63,11 @@ func newKnownEntity(
 }
 
 func addr2KnownEntity(op *userop.UserOperation, addr common.Address) string {
+	return Addr2KnownEntity(op, addr)
+}
+
+// Addr2KnownEntity returns a human-readable name for an entity address.
+func Addr2KnownEntity(op *userop.UserOperation, addr common.Address) string {
 	if addr == op.GetFactory() {
 		return "factory"
 	} else if addr == op.Sender {

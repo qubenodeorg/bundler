@@ -79,9 +79,10 @@ func (c *BatchHandlerCtx) MarkOpIndexForRemoval(index int, reason string) {
 // UserOpHandlerCtx is the object passed to UserOpHandler functions during the Client's SendUserOperation
 // process.
 type UserOpHandlerCtx struct {
-	UserOp              *userop.UserOperation
+	UserOp              userop.UserOperationInterface
 	EntryPoint          common.Address
 	ChainID             *big.Int
+	Version             userop.Version
 	pendingSenderOps    []*userop.UserOperation
 	pendingFactoryOps   []*userop.UserOperation
 	pendingPaymasterOps []*userop.UserOperation
@@ -92,14 +93,14 @@ type UserOpHandlerCtx struct {
 
 // NewUserOpHandlerContext creates a new UserOpHandlerCtx using a given op.
 func NewUserOpHandlerContext(
-	op *userop.UserOperation,
+	op userop.UserOperationInterface,
 	entryPoint common.Address,
 	chainID *big.Int,
 	mem *mempool.Mempool,
 	gs stake.GetStakeFunc,
 ) (*UserOpHandlerCtx, error) {
 	// Fetch any pending UserOperations in the mempool by entity
-	pso, err := mem.GetOps(entryPoint, op.Sender)
+	pso, err := mem.GetOps(entryPoint, op.GetSender())
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ func NewUserOpHandlerContext(
 	}
 
 	// Fetch the current entrypoint deposits by entity
-	sd, err := gs(entryPoint, op.Sender)
+	sd, err := gs(entryPoint, op.GetSender())
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +131,7 @@ func NewUserOpHandlerContext(
 		UserOp:              op,
 		EntryPoint:          entryPoint,
 		ChainID:             chainID,
+		Version:             userop.DetectVersionFromEntryPoint(entryPoint),
 		pendingSenderOps:    pso,
 		pendingFactoryOps:   pfo,
 		pendingPaymasterOps: ppo,

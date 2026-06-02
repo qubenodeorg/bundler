@@ -13,11 +13,10 @@ var (
 	// Only one create2 opcode is allowed if these two conditions are met:
 	// 	1. op.initcode.length != 0
 	// 	2. During account simulation (i.e. before markerOpCode)
-	create2OpCode = "CREATE2"
+	Create2OpCode = "CREATE2"
 
-	// List of opcodes not allowed during simulation for depth > 1 (i.e. account, paymaster, or contracts
-	// called by them).
-	bannedOpCodes = mapset.NewSet(
+	// BannedOpCodeSet lists opcodes not allowed during simulation for depth > 1.
+	BannedOpCodeSet = mapset.NewSet(
 		"GASPRICE",
 		"GASLIMIT",
 		"DIFFICULTY",
@@ -30,18 +29,40 @@ var (
 		"CREATE",
 		"COINBASE",
 		"SELFDESTRUCT",
+		"TSTORE",
+		"TLOAD",
 	)
 
-	// List of opcodes not allowed during validation for unstaked entities.
-	bannedUnstakedOpCodes = mapset.NewSet(
+	// BannedUnstakedOpCodeSet lists opcodes not allowed for unstaked entities.
+	BannedUnstakedOpCodeSet = mapset.NewSet(
 		"SELFBALANCE",
 		"BALANCE",
 	)
 
-	revertOpCode = "REVERT"
-	returnOpCode = "RETURN"
+	RevertOpCode = "REVERT"
+	ReturnOpCode = "RETURN"
 
 	// Precompiled contract that performs secp256r1 signature verification. See
 	// https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md
-	rip7212precompile = common.HexToAddress("0x100")
+	Rip7212Precompile = common.HexToAddress("0x100")
+)
+
+// BannedOpCodes returns the set of banned opcodes.
+func BannedOpCodes() mapset.Set[string] {
+	return BannedOpCodeSet
+}
+
+// BannedUnstakedOpCodes returns the set of opcodes banned for unstaked entities.
+func BannedUnstakedOpCodes() mapset.Set[string] {
+	return BannedUnstakedOpCodeSet
+}
+
+// Backward-compatible aliases
+var (
+	create2OpCode       = Create2OpCode
+	bannedOpCodes       = BannedOpCodeSet
+	bannedUnstakedOpCodes = BannedUnstakedOpCodeSet
+	revertOpCode        = RevertOpCode
+	returnOpCode        = ReturnOpCode
+	rip7212precompile   = Rip7212Precompile
 )

@@ -38,6 +38,7 @@ type Standalone struct {
 	isRIP7212Supported bool
 	tracer             string
 	repConst           *entities.ReputationConstants
+	version            userop.Version
 }
 
 // New returns a Standalone instance with methods that can be used in Client and Bundler modules to perform
@@ -65,6 +66,7 @@ func New(
 		isRIP7212Supported,
 		tracer,
 		repConst,
+		ov.GetVersion(),
 	}
 }
 
@@ -75,14 +77,44 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 		gc := getCodeWithEthClient(s.eth)
 
 		g := new(errgroup.Group)
-		g.Go(func() error { return ValidateSender(ctx.UserOp, gc) })
-		g.Go(func() error { return ValidateInitCode(ctx.UserOp) })
-		g.Go(func() error { return ValidateVerificationGas(ctx.UserOp, s.ov, s.maxVerificationGas) })
-		g.Go(func() error { return ValidatePaymasterAndData(ctx.UserOp, ctx.GetPaymasterDepositInfo(), gc) })
-		g.Go(func() error { return ValidateCallGasLimit(ctx.UserOp, s.ov) })
-		g.Go(func() error { return ValidateFeePerGas(ctx.UserOp, gasprice.GetBaseFeeWithEthClient(s.eth)) })
-		g.Go(func() error { return ValidatePendingOps(ctx.UserOp, ctx.GetPendingSenderOps()) })
-		g.Go(func() error { return ValidateGasAvailable(ctx.UserOp, s.maxBatchGasLimit) })
+
+		switch ctx.Version {
+		case userop.V0_6:
+			op := ctx.UserOp.(*userop.UserOperation)
+			g.Go(func() error { return ValidateSender(op, gc) })
+			g.Go(func() error { return ValidateInitCode(op) })
+			g.Go(func() error { return ValidateVerificationGas(op, s.ov, s.maxVerificationGas) })
+			g.Go(func() error { return ValidatePaymasterAndData(op, ctx.GetPaymasterDepositInfo(), gc) })
+			g.Go(func() error { return ValidateCallGasLimit(op, s.ov) })
+			g.Go(func() error { return ValidateFeePerGas(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
+			g.Go(func() error { return ValidatePendingOps(op, ctx.GetPendingSenderOps()) })
+			g.Go(func() error { return ValidateGasAvailable(op, s.maxBatchGasLimit) })
+		default:
+			// v0.7+ uses the interface-based validation functions
+			op := ctx.UserOp
+			g.Go(func() error { return ValidateSenderV07(op, gc) })
+			g.Go(func() error { return ValidateFactory(op) })
+			g.Go(func() error { return ValidateFactoryData(op) })
+			g.Go(func() error {
+				return ValidateVerificationGasV07(op, s.ov, s.maxVerificationGas)
+			})
+			g.Go(func() error {
+				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.Version)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterData(op, ctx.Version)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterVerificationGasLimit(op, s.maxVerificationGas)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterPostOpGasLimit(op)
+			})
+			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ov) })
+			g.Go(func() error { return ValidateFeePerGasV07(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
+			g.Go(func() error { return ValidatePendingOpsV07(op, ctx.GetPendingSenderOps()) })
+			g.Go(func() error { return ValidateGasAvailableV07(op, s.ov, s.maxBatchGasLimit) })
+		}
 
 		if err := g.Wait(); err != nil {
 			return errors.NewRPCError(errors.INVALID_FIELDS, err.Error(), err.Error())
@@ -94,57 +126,53 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 // SimulateOp returns a UserOpHandler that runs through simulation of new UserOps with the EntryPoint.
 func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 	return func(ctx *modules.UserOpHandlerCtx) error {
-		// gc := getCodeWithEthClient(s.eth)
 		g := new(errgroup.Group)
-		g.Go(func() error {
-			sim, err := simulation.SimulateValidation(s.rpc, ctx.EntryPoint, ctx.UserOp)
 
-			if err != nil {
-				return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, err.Error(), err.Error())
-			}
-			if sim.ReturnInfo.SigFailed {
-				return errors.NewRPCError(
-					errors.INVALID_SIGNATURE,
-					"Invalid UserOp signature or paymaster signature",
-					nil,
+		switch ctx.Version {
+		case userop.V0_6:
+			op := ctx.UserOp.(*userop.UserOperation)
+			g.Go(func() error {
+				sim, err := simulation.SimulateValidation(s.rpc, ctx.EntryPoint, op)
+				if err != nil {
+					return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, err.Error(), err.Error())
+				}
+				if sim.ReturnInfo.SigFailed {
+					return errors.NewRPCError(
+						errors.INVALID_SIGNATURE,
+						"Invalid UserOp signature or paymaster signature",
+						nil,
+					)
+				}
+				if sim.ReturnInfo.ValidUntil.Cmp(common.Big0) != 0 &&
+					time.Now().Unix() >= sim.ReturnInfo.ValidUntil.Int64()-30 {
+					return errors.NewRPCError(
+						errors.SHORT_DEADLINE,
+						"expires too soon",
+						nil,
+					)
+				}
+				return nil
+			})
+		default:
+			// v0.7+: off-chain simulation only (simulateValidation removed from deployed contract)
+			g.Go(func() error {
+				return SimulateValidationV07(
+					s.rpc,
+					ctx.EntryPoint,
+					ctx.UserOp,
+					ctx.ChainID,
+					s.ov,
+					s.alt,
+					s.isRIP7212Supported,
+					s.tracer,
+					simulation.EntityStakes{
+						ctx.UserOp.GetSender():   ctx.GetSenderDepositInfo(),
+						ctx.UserOp.GetFactory():  ctx.GetFactoryDepositInfo(),
+						ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
+					},
 				)
-			}
-			if sim.ReturnInfo.ValidUntil.Cmp(common.Big0) != 0 &&
-				time.Now().Unix() >= sim.ReturnInfo.ValidUntil.Int64()-30 {
-				return errors.NewRPCError(
-					errors.SHORT_DEADLINE,
-					"expires too soon",
-					nil,
-				)
-			}
-			return nil
-		})
-		g.Go(func() error {
-			return nil
-			// out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
-			// 	Rpc:                s.rpc,
-			// 	EntryPoint:         ctx.EntryPoint,
-			// 	AltMempools:        s.alt,
-			// 	Op:                 ctx.UserOp,
-			// 	ChainID:            ctx.ChainID,
-			// 	IsRIP7212Supported: s.isRIP7212Supported,
-			// 	Tracer:             s.tracer,
-			// 	Stakes: simulation.EntityStakes{
-			// 		ctx.UserOp.Sender:         ctx.GetSenderDepositInfo(),
-			// 		ctx.UserOp.GetFactory():   ctx.GetFactoryDepositInfo(),
-			// 		ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
-			// 	},
-			// })
-			// if err != nil {
-			// 	return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
-			// }
-
-			// ch, err := getCodeHashes(out.TouchedContracts, gc)
-			// if err != nil {
-			// 	return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
-			// }
-			// return saveCodeHashes(s.db, ctx.UserOp.GetUserOpHash(ctx.EntryPoint, ctx.ChainID), ch)
-		})
+			})
+		}
 
 		return g.Wait()
 	}

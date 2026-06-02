@@ -34,3 +34,35 @@ func ValidateFeePerGas(op *userop.UserOperation, gbf gasprice.GetBaseFeeFunc) er
 
 	return nil
 }
+
+// ValidateFeePerGasV07 checks fee parameters. Uses the interface to be version-agnostic.
+func ValidateFeePerGasV07(op userop.UserOperationInterface, gbf gasprice.GetBaseFeeFunc) error {
+	bf, err := gbf()
+	if err != nil {
+		return err
+	}
+
+	maxPriorityFee := op.GetMaxPriorityFeePerGas()
+	maxFee := op.GetMaxFeePerGas()
+	if maxPriorityFee == nil || maxFee == nil {
+		return fmt.Errorf("maxPriorityFeePerGas or maxFeePerGas is nil")
+	}
+
+	if bf == nil {
+		if maxPriorityFee.Cmp(maxFee) != 0 {
+			return fmt.Errorf("legacy fee mode: maxPriorityFeePerGas must equal maxFeePerGas")
+		}
+
+		return nil
+	}
+
+	if maxPriorityFee.Cmp(maxFee) == 1 {
+		return fmt.Errorf("maxFeePerGas: must be equal to or greater than maxPriorityFeePerGas")
+	}
+
+	if maxFee.Cmp(bf) < 0 {
+		return fmt.Errorf("maxFeePerGas: must be equal to or greater than current block.basefee")
+	}
+
+	return nil
+}

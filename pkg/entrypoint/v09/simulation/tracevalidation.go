@@ -1,0 +1,146 @@
+package simulation
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math"
+	"math/big"
+
+	mapset "github.com/deckarep/golang-set/v2"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/zarbanio/bundler/pkg/altmempools"
+	"github.com/zarbanio/bundler/pkg/entrypoint/methods"
+	simutils "github.com/zarbanio/bundler/pkg/entrypoint/simulation"
+	"github.com/zarbanio/bundler/pkg/entrypoint/utils"
+	v09 "github.com/zarbanio/bundler/pkg/entrypoint/v09"
+	"github.com/zarbanio/bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/tracer"
+	"github.com/zarbanio/bundler/pkg/userop"
+)
+
+type TraceInput struct {
+	Rpc                *rpc.Client
+	EntryPoint         common.Address
+	Op                 *userop.UserOperation
+	ChainID            *big.Int
+	IsRIP7212Supported bool
+	Tracer             string
+	Stakes             simutils.EntityStakes
+	AltMempools        *altmempools.Directory
+}
+
+type TraceOutput struct {
+	TouchedContracts []common.Address
+	AltMempoolIds    []string
+}
+
+func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
+	ep, err := v09.NewV09(in.EntryPoint, ethclient.NewClient(in.Rpc))
+	if err != nil {
+		return nil, err
+	}
+	auth, err := bind.NewKeyedTransactorWithChainID(utils.DummyPk, in.ChainID)
+	if err != nil {
+		return nil, err
+	}
+	auth.GasLimit = math.MaxUint64
+	auth.NoSend = true
+
+	packedOp, err := toPackedOp(in.Op)
+	if err != nil {
+		return nil, err
+	}
+
+	beneficiary := common.HexToAddress("0x")
+	tx, err := ep.HandleOps(auth, []v09.PackedUserOperation{*packedOp}, beneficiary)
+	if err != nil {
+		return nil, err
+	}
+
+	var res tracer.BundlerCollectorReturn
+	req := utils.TraceCallReq{
+		From:         common.HexToAddress("0x"),
+		To:           in.EntryPoint,
+		Data:         tx.Data(),
+		MaxFeePerGas: hexutil.Big(*big.NewInt(0)),
+	}
+	opts := utils.TraceCallOpts{
+		Tracer:         in.Tracer,
+		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
+	}
+
+	if err := in.Rpc.CallContext(context.Background(), &res, "debug_traceCall", &req, "latest", &opts); err != nil {
+		return nil, err
+	}
+
+	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, &res)
+}
+
+func ProcessTraceResult(
+	op *userop.UserOperation,
+	entryPoint common.Address,
+	stakes simutils.EntityStakes,
+	res *tracer.BundlerCollectorReturn,
+) (*TraceOutput, error) {
+	knownEntity, err := simutils.NewKnownEntity(op, res, stakes)
+	altMempoolIds := []string{}
+	if err != nil {
+		return nil, err
+	}
+
+	ic := mapset.NewSet[common.Address]()
+	for title, entity := range knownEntity {
+		if entity.Info.OOG {
+			return nil, fmt.Errorf("%s OOG", title)
+		}
+		if _, ok := entity.Info.ExtCodeAccessInfo[entryPoint]; ok {
+			return nil, fmt.Errorf("%s has forbidden EXTCODE* access to the EntryPoint", title)
+		}
+		for opcode := range entity.Info.Opcodes {
+			if simutils.BannedOpCodeSet.Contains(opcode) {
+				return nil, fmt.Errorf("%s uses banned opcode: %s", title, opcode)
+			}
+			if !entity.IsStaked && simutils.BannedUnstakedOpCodeSet.Contains(opcode) {
+				return nil, fmt.Errorf("unstaked %s uses banned opcode: %s", title, opcode)
+			}
+		}
+		ic.Add(entity.Address)
+		for addr := range entity.Info.ContractSize {
+			ic.Add(addr)
+		}
+	}
+
+	callStack := simutils.NewCallStack(res.Calls)
+	for _, call := range callStack {
+		if call.Method == methods.ValidatePaymasterUserOpSelector {
+			out, err := methods.DecodeValidatePaymasterUserOpOutput(call.Return)
+			if err != nil {
+				return nil, fmt.Errorf("unexpected tracing result: %s", err)
+			}
+			if len(out.Context) != 0 && !knownEntity["paymaster"].IsStaked {
+				return nil, errors.New("unstaked paymaster must not return context")
+			}
+		} else if call.To == entryPoint && call.Method == methods.BalanceOfSelector {
+			return nil, fmt.Errorf(
+				"%s cannot call balanceOf on EntryPoint",
+				simutils.Addr2KnownEntity(op, call.From),
+			)
+		} else if call.To != entryPoint && call.Value.Cmp(common.Big0) == 1 {
+			return nil, fmt.Errorf(
+				"%s has a forbidden value transfer to %s",
+				simutils.Addr2KnownEntity(op, call.From),
+				simutils.Addr2KnownEntity(op, call.To),
+			)
+		}
+	}
+
+	return &TraceOutput{
+		TouchedContracts: ic.ToSlice(),
+		AltMempoolIds:    altMempoolIds,
+	}, nil
+}

@@ -23,13 +23,23 @@ type mockOp struct {
 }
 
 func (m *mockOp) GetSender() common.Address                         { return m.sender }
+func (m *mockOp) GetNonce() *big.Int                                { return big.NewInt(0) }
 func (m *mockOp) GetPaymaster() common.Address                      { return m.paymaster }
 func (m *mockOp) GetFactory() common.Address                        { return common.Address{} }
 func (m *mockOp) GetFactoryData() []byte                            { return nil }
-func (m *mockOp) GetMaxFeePerGas() *big.Int                          { return m.maxFee }
-func (m *mockOp) GetMaxGasAvailable() *big.Int                       { return big.NewInt(0) }
-func (m *mockOp) GetMaxPrefund() *big.Int                            { return big.NewInt(0) }
-func (m *mockOp) GetDynamicGasPrice(basefee *big.Int) *big.Int       { return big.NewInt(0) }
+func (m *mockOp) GetCallData() []byte                               { return nil }
+func (m *mockOp) GetCallGasLimit() *big.Int                         { return big.NewInt(0) }
+func (m *mockOp) GetVerificationGasLimit() *big.Int                 { return big.NewInt(0) }
+func (m *mockOp) GetPreVerificationGas() *big.Int                   { return big.NewInt(0) }
+func (m *mockOp) GetMaxFeePerGas() *big.Int                         { return m.maxFee }
+func (m *mockOp) GetMaxPriorityFeePerGas() *big.Int                 { return big.NewInt(0) }
+func (m *mockOp) GetSignature() []byte                              { return nil }
+func (m *mockOp) GetPaymasterVerificationGasLimit() *big.Int        { return big.NewInt(0) }
+func (m *mockOp) GetPaymasterPostOpGasLimit() *big.Int              { return big.NewInt(0) }
+func (m *mockOp) GetPaymasterData() []byte                          { return nil }
+func (m *mockOp) GetMaxGasAvailable() *big.Int                      { return big.NewInt(0) }
+func (m *mockOp) GetMaxPrefund() *big.Int                           { return big.NewInt(0) }
+func (m *mockOp) GetDynamicGasPrice(basefee *big.Int) *big.Int      { return big.NewInt(0) }
 func (m *mockOp) Pack() []byte                                      { return nil }
 func (m *mockOp) PackForSignature() []byte                          { return nil }
 func (m *mockOp) GetUserOpHash(ep common.Address, chainID *big.Int) common.Hash { return common.Hash{} }

@@ -25,6 +25,11 @@ type storageSlots mapset.Set[string]
 type storageSlotsByEntity map[common.Address]storageSlots
 
 func newStorageSlotsByEntity(stakes EntityStakes, keccak []string) storageSlotsByEntity {
+	return NewStorageSlotsByEntity(stakes, keccak)
+}
+
+// NewStorageSlotsByEntity creates a storage slot map keyed by entity address.
+func NewStorageSlotsByEntity(stakes EntityStakes, keccak []string) storageSlotsByEntity {
 	storageSlotsByEntity := make(storageSlotsByEntity)
 
 	for _, k := range keccak {

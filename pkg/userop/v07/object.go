@@ -80,9 +80,59 @@ func (op *UserOperation) GetSender() common.Address {
 	return op.Sender
 }
 
+// GetNonce returns the nonce.
+func (op *UserOperation) GetNonce() *big.Int {
+	return op.Nonce
+}
+
+// GetCallData returns the callData.
+func (op *UserOperation) GetCallData() []byte {
+	return op.CallData
+}
+
+// GetCallGasLimit returns the callGasLimit.
+func (op *UserOperation) GetCallGasLimit() *big.Int {
+	return op.CallGasLimit
+}
+
+// GetVerificationGasLimit returns the verificationGasLimit.
+func (op *UserOperation) GetVerificationGasLimit() *big.Int {
+	return op.VerificationGasLimit
+}
+
+// GetPreVerificationGas returns the preVerificationGas.
+func (op *UserOperation) GetPreVerificationGas() *big.Int {
+	return op.PreVerificationGas
+}
+
 // GetMaxFeePerGas returns the max fee per gas.
 func (op *UserOperation) GetMaxFeePerGas() *big.Int {
 	return op.MaxFeePerGas
+}
+
+// GetMaxPriorityFeePerGas returns the max priority fee per gas.
+func (op *UserOperation) GetMaxPriorityFeePerGas() *big.Int {
+	return op.MaxPriorityFeePerGas
+}
+
+// GetSignature returns the signature.
+func (op *UserOperation) GetSignature() []byte {
+	return op.Signature
+}
+
+// GetPaymasterVerificationGasLimit returns the paymaster verification gas limit.
+func (op *UserOperation) GetPaymasterVerificationGasLimit() *big.Int {
+	return op.PaymasterVerificationGasLimit
+}
+
+// GetPaymasterPostOpGasLimit returns the paymaster post op gas limit.
+func (op *UserOperation) GetPaymasterPostOpGasLimit() *big.Int {
+	return op.PaymasterPostOpGasLimit
+}
+
+// GetPaymasterData returns the paymaster data.
+func (op *UserOperation) GetPaymasterData() []byte {
+	return op.PaymasterData
 }
 
 // GetPaymaster returns the paymaster address.

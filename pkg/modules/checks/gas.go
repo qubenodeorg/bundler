@@ -27,3 +27,29 @@ func ValidateGasAvailable(op *userop.UserOperation, maxBatchGasLimit *big.Int) e
 
 	return nil
 }
+
+// ValidateGasAvailableV07 checks that the max available gas is less than the batch gas limit.
+// Uses the interface to be version-agnostic.
+func ValidateGasAvailableV07(
+	op userop.UserOperationInterface,
+	ov *gas.Overhead,
+	maxBatchGasLimit *big.Int,
+) error {
+	static, err := ov.CalcPreVerificationGas(op)
+	if err != nil {
+		return err
+	}
+	mgaVal := op.GetMaxGasAvailable()
+	pvgVal := op.GetPreVerificationGas()
+	if mgaVal == nil || pvgVal == nil {
+		return fmt.Errorf("maxGasAvailable or preVerificationGas is nil")
+	}
+	mgl := big.NewInt(0).Sub(mgaVal, pvgVal)
+	mga := big.NewInt(0).Add(mgl, static)
+
+	if mga.Cmp(maxBatchGasLimit) > 0 {
+		return fmt.Errorf("gasLimit: exceeds maxBatchGasLimit of %s", maxBatchGasLimit.String())
+	}
+
+	return nil
+}

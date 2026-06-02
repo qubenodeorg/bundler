@@ -11,6 +11,9 @@ import (
 // UserOperations to the EntryPoint. It returns the larger value between the suggested gas tip or the average
 // maxPriorityFeePerGas of the entire batch.
 func SuggestMeanGasTipCap(tip *big.Int, batch []*userop.UserOperation) *big.Int {
+	if len(batch) == 0 {
+		return tip
+	}
 	sum := big.NewInt(0)
 	for _, op := range batch {
 		sum = big.NewInt(0).Add(sum, op.MaxPriorityFeePerGas)
@@ -28,6 +31,9 @@ func SuggestMeanGasTipCap(tip *big.Int, batch []*userop.UserOperation) *big.Int 
 // the entire batch.
 func SuggestMeanGasFeeCap(basefee *big.Int, tip *big.Int, batch []*userop.UserOperation) *big.Int {
 	mf := big.NewInt(0).Add(tip, big.NewInt(0).Mul(basefee, common.Big2))
+	if len(batch) == 0 {
+		return mf
+	}
 	sum := big.NewInt(0)
 	for _, op := range batch {
 		sum = big.NewInt(0).Add(sum, op.MaxFeePerGas)
@@ -44,6 +50,9 @@ func SuggestMeanGasFeeCap(basefee *big.Int, tip *big.Int, batch []*userop.UserOp
 // the EntryPoint. It returns the larger value between a given gas price or the average maxFeePerGas of the
 // entire batch.
 func SuggestMeanGasPrice(gasPrice *big.Int, batch []*userop.UserOperation) *big.Int {
+	if len(batch) == 0 {
+		return gasPrice
+	}
 	sum := big.NewInt(0)
 	for _, op := range batch {
 		sum = big.NewInt(0).Add(sum, op.MaxFeePerGas)
