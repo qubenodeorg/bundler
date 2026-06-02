@@ -34,6 +34,8 @@ type Opts struct {
 	WaitTimeout time.Duration
 }
 
+var maxUint128 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+
 func toPackedBatch(batch []*userop.UserOperation) []v09.PackedUserOperation {
 	ops := []v09.PackedUserOperation{}
 	for _, op := range batch {
@@ -53,7 +55,6 @@ func toPackedBatch(batch []*userop.UserOperation) []v09.PackedUserOperation {
 }
 
 func packAccountGasLimits(verificationGasLimit, callGasLimit *big.Int) [32]byte {
-	maxUint128 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
 	vg := new(big.Int).And(verificationGasLimit, maxUint128)
 	cg := new(big.Int).And(callGasLimit, maxUint128)
 	packed := new(big.Int).Lsh(vg, 128)
@@ -66,7 +67,6 @@ func packAccountGasLimits(verificationGasLimit, callGasLimit *big.Int) [32]byte 
 }
 
 func packGasFees(maxFeePerGas, maxPriorityFeePerGas *big.Int) [32]byte {
-	maxUint128 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
 	mf := new(big.Int).And(maxFeePerGas, maxUint128)
 	mp := new(big.Int).And(maxPriorityFeePerGas, maxUint128)
 	packed := new(big.Int).Lsh(mf, 128)
