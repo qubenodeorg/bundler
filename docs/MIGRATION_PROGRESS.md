@@ -65,8 +65,24 @@
 - [x] Add `Version` field to `UserOpHandlerCtx` with auto-detection from EntryPoint address
 - [x] Extend `UserOperationInterface` with 10 new getter methods
 - [x] Implement new interface methods in all version packages (v06, v07, v08, v09)
-- [ ] Update tracers for new versions
-- [ ] Create v0.9-specific simulation packages
+- [x] Update tracers for new versions
+- [x] Create v0.9-specific simulation packages (`pkg/entrypoint/v07/simulation`, `v08/simulation`, `v09/simulation`) with `ProcessTraceResult`, `TraceSimulateValidation`, `TraceInput`/`TraceOutput`
+
+### Day 8-10: PR-24 review fixes
+
+- [x] Add division-by-zero guards in `pkg/entrypoint/transaction/gas.go` (`SuggestMeanGasTipCap`, `SuggestMeanGasFeeCap`, `SuggestMeanGasPrice`) — empty batch returns the supplied fallback
+- [x] Add division-by-zero guards in `pkg/entrypoint/v09/transaction/gas.go` (v09-specific copies of the same three functions)
+- [x] Add empty-batch regression tests in both `gas_test.go` files (6 new test cases)
+- [x] Consolidate zero-address paymaster check in `pkg/modules/checks/paymaster.go` — single `ValidatePaymasterData` rule applies to v0.6/v0.7/v0.8/v0.9; remove duplicate from `ValidatePaymaster`
+- [x] Add v0.6/v0.8/v0.9 zero-addr paymaster tests in `paymaster_v07_test.go`
+- [x] Change `SimulateValidationV07` and `simulateWithTrace` signatures in `pkg/modules/checks/simulate.go` — accept `userop.UserOperationInterface` and a caller-supplied `simulation.EntityStakes`
+- [x] Pass real stakes from `standalone.go` — built from `ctx.GetSenderDepositInfo()` / `GetFactoryDepositInfo()` / `GetPaymasterDepositInfo()` (no more hardcoded zero-value stakes)
+- [x] Refactor `UserOpHandlerCtx.UserOp` to `userop.UserOperationInterface` (and `NewUserOpHandlerContext` first param) in `pkg/modules/context.go`
+- [x] Update `pkg/modules/entities/reputation.go` to use `ctx.UserOp.GetSender()` instead of direct `.Sender` field access (5 sites)
+- [x] Narrow `ctx.UserOp` to `*userop.UserOperation` in v0.6 branch of `standalone.go` (v0.7+ path already used interface getters)
+- [x] Narrow at mempool boundary in `pkg/client/client.go` — `i.mempool.AddOp(epAddr, ctx.UserOp.(*userop.UserOperation))`
+- [x] Update `pkg/modules/checks/erc7562.go` — `ValidateERC7562Rules` accepts `userop.UserOperationInterface`
+- [x] `go test -count=1 ./...`, `go vet ./...`, and `go test -race` on `pkg/entrypoint/...` + `pkg/modules/...` all pass
 
 ## Week 3: Features & Integration (Days 15-21)
 
