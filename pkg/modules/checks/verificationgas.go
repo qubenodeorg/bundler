@@ -29,3 +29,30 @@ func ValidateVerificationGas(op *userop.UserOperation, ov *gas.Overhead, maxVeri
 
 	return nil
 }
+
+// ValidateVerificationGasV07 checks verification gas limits for v0.7+.
+// For v0.7+, the total verification gas is verificationGasLimit + paymasterVerificationGasLimit.
+func ValidateVerificationGasV07(
+	op userop.UserOperationInterface,
+	ov *gas.Overhead,
+	maxVerificationGas *big.Int,
+) error {
+	totalVG := new(big.Int).Add(op.GetVerificationGasLimit(), op.GetPaymasterVerificationGasLimit())
+	if totalVG.Cmp(maxVerificationGas) > 0 {
+		return fmt.Errorf(
+			"verificationGasLimit: total (verificationGasLimit + paymasterVerificationGasLimit) "+
+				"exceeds maxVerificationGas of %s",
+			maxVerificationGas.String(),
+		)
+	}
+
+	pvg, err := ov.CalcPreVerificationGas(op)
+	if err != nil {
+		return err
+	}
+	if op.GetPreVerificationGas().Cmp(pvg) < 0 {
+		return fmt.Errorf("preVerificationGas: below expected gas of %s", pvg.String())
+	}
+
+	return nil
+}

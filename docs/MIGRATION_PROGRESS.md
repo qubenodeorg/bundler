@@ -53,7 +53,18 @@
 
 ## Week 2: Validation & Simulation (Days 8-14)
 
-- [ ] Update validation rules for v0.7/v0.8/v0.9
+- [x] Update `pkg/modules/checks/initcode.go` — ValidateFactory + ValidateFactoryData
+- [x] Update `pkg/modules/checks/paymaster.go` — ValidatePaymaster, ValidatePaymasterData, ValidatePaymasterVerificationGasLimit, ValidatePaymasterPostOpGasLimit
+- [x] Update `pkg/modules/checks/verificationgas.go` — ValidateVerificationGasV07 with paymaster gas limits
+- [x] Update `pkg/modules/checks/gas.go` — ValidateGasAvailableV07 for new prefund
+- [x] Update `pkg/modules/checks/standalone.go` — Version-aware validation switching (v0.6 vs v0.7+)
+- [x] Add V07 overloads to sender.go, callgas.go, gasfee.go, pendingops.go
+- [x] Implement ERC-7562 validation rules (OP-013, OP-051, OP-054, STO-033, EREP-020, OP-070)
+- [x] Add `delegateAndRevert()` support for off-chain simulation (v0.7+)
+- [x] Remove on-chain `simulateValidation` calls for v0.7+ (replaced by trace-based + delegateAndRevert)
+- [x] Add `Version` field to `UserOpHandlerCtx` with auto-detection from EntryPoint address
+- [x] Extend `UserOperationInterface` with 10 new getter methods
+- [x] Implement new interface methods in all version packages (v06, v07, v08, v09)
 - [ ] Update tracers for new versions
 - [ ] Create v0.9-specific simulation packages
 

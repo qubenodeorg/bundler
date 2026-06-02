@@ -82,6 +82,7 @@ type UserOpHandlerCtx struct {
 	UserOp              *userop.UserOperation
 	EntryPoint          common.Address
 	ChainID             *big.Int
+	Version             userop.Version
 	pendingSenderOps    []*userop.UserOperation
 	pendingFactoryOps   []*userop.UserOperation
 	pendingPaymasterOps []*userop.UserOperation
@@ -130,6 +131,7 @@ func NewUserOpHandlerContext(
 		UserOp:              op,
 		EntryPoint:          entryPoint,
 		ChainID:             chainID,
+		Version:             userop.DetectVersionFromEntryPoint(entryPoint),
 		pendingSenderOps:    pso,
 		pendingFactoryOps:   pfo,
 		pendingPaymasterOps: ppo,

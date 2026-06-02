@@ -55,3 +55,28 @@ func ValidatePendingOps(
 
 	return nil
 }
+
+// ValidatePendingOpsV07 checks pending ops using the interface. Version-agnostic.
+func ValidatePendingOpsV07(
+	op userop.UserOperationInterface,
+	penOps []*userop.UserOperation,
+) error {
+	if len(penOps) > 0 {
+		var oldOp *userop.UserOperation
+		for _, penOp := range penOps {
+			if op.GetNonce().Cmp(penOp.Nonce) == 0 {
+				oldOp = penOp
+			}
+		}
+
+		if oldOp != nil {
+			newMf, newMpf := calcNewThresholds(oldOp.MaxFeePerGas, oldOp.MaxPriorityFeePerGas)
+
+			if op.GetMaxFeePerGas().Cmp(newMf) < 0 || op.GetMaxPriorityFeePerGas().Cmp(newMpf) < 0 {
+				return ErrReplacementOpUnderpriced
+			}
+		}
+	}
+
+	return nil
+}
