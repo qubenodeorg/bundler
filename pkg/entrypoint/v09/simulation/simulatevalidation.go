@@ -32,6 +32,9 @@ func toPackedOpFromInterface(op userop.UserOperationInterface) (*epv09.PackedUse
 		return nil, stdError.New("user operation is nil")
 	}
 	if v09op, ok := op.(*uov09.UserOperation); ok {
+		if v09op == nil {
+			return nil, stdError.New("user operation is nil")
+		}
 		return &epv09.PackedUserOperation{
 			Sender:             v09op.Sender,
 			Nonce:              v09op.Nonce,
@@ -65,6 +68,21 @@ func toPackedOpFromInterface(op userop.UserOperationInterface) (*epv09.PackedUse
 	}, nil
 }
 
+// SimulateValidation is the off-chain validation-failure check for v0.9 EntryPoints.
+//
+// In v0.7+, the on-chain simulateValidation() method was removed. This function
+// performs a quick off-chain check by invoking handleOps() via eth_call and
+// decoding any revert into a FailedOp or FailedOpWithRevert. If the call does
+// not revert, validation passed; if it reverts with a validation error, the
+// reason is returned.
+//
+// Note: this is a simplified check intended to detect validation failures
+// without the overhead of a full debug_traceCall. For operations that pass
+// validation it does not return a structured ValidationResultRevert - it
+// merely reports success. Callers that need the full structured result
+// (storage access, referenced contracts, etc.) should use
+// TraceSimulateValidation from the same package, which leverages the v0.9
+// bundler collector tracer.
 func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
 	if in == nil {
 		return nil, stdError.New("simulate input is nil")

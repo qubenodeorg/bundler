@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/zarbanio/bundler/pkg/userop"
 	uov07 "github.com/zarbanio/bundler/pkg/userop/v07"
 )
 
@@ -37,6 +38,15 @@ func TestToPackedOpFromInterfaceNil(t *testing.T) {
 	_, err := toPackedOpFromInterface(nil)
 	if err == nil {
 		t.Fatal("toPackedOpFromInterface(nil): got nil, want error")
+	}
+}
+
+func TestToPackedOpFromInterfaceTypedNil(t *testing.T) {
+	var op *uov07.UserOperation
+	var iface userop.UserOperationInterface = op
+	_, err := toPackedOpFromInterface(iface)
+	if err == nil {
+		t.Fatal("toPackedOpFromInterface(typed nil): got nil, want error")
 	}
 }
 
