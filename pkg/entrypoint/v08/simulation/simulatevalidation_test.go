@@ -33,6 +33,32 @@ func TestSimulateOutputStructV08(t *testing.T) {
 	}
 }
 
+func TestToPackedOpFromInterfaceNilV08(t *testing.T) {
+	_, err := toPackedOpFromInterface(nil)
+	if err == nil {
+		t.Fatal("toPackedOpFromInterface(nil): got nil, want error")
+	}
+}
+
+func TestSimulateValidationNilInputV08(t *testing.T) {
+	_, err := SimulateValidation(nil)
+	if err == nil {
+		t.Fatal("SimulateValidation(nil): got nil, want error")
+	}
+}
+
+func TestSimulateValidationNilRpcV08(t *testing.T) {
+	_, err := SimulateValidation(&SimulateInput{
+		Rpc:        nil,
+		EntryPoint: common.HexToAddress("0x4337084d9e255ff0702461cf8895ce9e3b5ff108"),
+		Op:         &uov08.UserOperation{},
+		ChainID:    big.NewInt(1),
+	})
+	if err == nil {
+		t.Fatal("SimulateValidation(nil Rpc): got nil, want error")
+	}
+}
+
 func TestToPackedOpFromInterfaceV08(t *testing.T) {
 	op := &uov08.UserOperation{
 		Sender:                        common.HexToAddress("0xa13D69573f994bf662C2714560c44dd7266FC547"),

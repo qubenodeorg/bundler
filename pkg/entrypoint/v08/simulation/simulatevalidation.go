@@ -1,6 +1,7 @@
 package simulation
 
 import (
+	stdError "errors"
 	"fmt"
 	"math/big"
 
@@ -27,6 +28,9 @@ type SimulateOutput struct {
 }
 
 func toPackedOpFromInterface(op userop.UserOperationInterface) (*epv08.PackedUserOperation, error) {
+	if op == nil {
+		return nil, stdError.New("user operation is nil")
+	}
 	if v08op, ok := op.(*uov08.UserOperation); ok {
 		return &epv08.PackedUserOperation{
 			Sender:             v08op.Sender,
@@ -62,6 +66,19 @@ func toPackedOpFromInterface(op userop.UserOperationInterface) (*epv08.PackedUse
 }
 
 func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
+	if in == nil {
+		return nil, stdError.New("simulate input is nil")
+	}
+	if in.Rpc == nil {
+		return nil, stdError.New("rpc client is nil")
+	}
+	if in.Op == nil {
+		return nil, stdError.New("user operation is nil")
+	}
+	if in.ChainID == nil {
+		return nil, stdError.New("chain id is nil")
+	}
+
 	ep, err := epv08.NewV08(in.EntryPoint, ethclient.NewClient(in.Rpc))
 	if err != nil {
 		return nil, err
@@ -72,7 +89,7 @@ func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
 		return nil, err
 	}
 
-	beneficiary := common.HexToAddress("0x")
+	beneficiary := common.Address{}
 	var res []interface{}
 	rawCaller := &epv08.V08Raw{Contract: ep}
 	err = rawCaller.Call(nil, &res, "handleOps", []epv08.PackedUserOperation{*packedOp}, beneficiary)
