@@ -17,23 +17,29 @@ func newKnownEntity(
 	op *userop.UserOperation,
 	res *tracer.BundlerCollectorReturn,
 	stakes EntityStakes,
+	delegateAddr common.Address,
 ) (knownEntity, error) {
-	return NewKnownEntity(op, res, stakes)
+	return NewKnownEntity(op, res, stakes, delegateAddr)
 }
 
 // NewKnownEntity creates a known entity map from trace results.
+// If delegateAddr is non-zero and the account call has EIP-7702 auth, a "delegate" entity is added.
 func NewKnownEntity(
 	op *userop.UserOperation,
 	res *tracer.BundlerCollectorReturn,
 	stakes EntityStakes,
+	delegateAddr common.Address,
 ) (knownEntity, error) {
 	si := tracer.CallFromEntryPointInfo{}
 	fi := tracer.CallFromEntryPointInfo{}
+	di := tracer.CallFromEntryPointInfo{}
 	pi := tracer.CallFromEntryPointInfo{}
 	for _, c := range res.CallsFromEntryPoint {
 		switch c.TopLevelTargetAddress {
 		case op.Sender:
 			si = c
+		case delegateAddr:
+			di = c
 		case op.GetPaymaster():
 			pi = c
 		default:
@@ -43,7 +49,7 @@ func NewKnownEntity(
 		}
 	}
 
-	return knownEntity{
+	entities := knownEntity{
 		"account": {
 			Address:  op.Sender,
 			Info:     si,
@@ -59,7 +65,21 @@ func NewKnownEntity(
 			Info:     pi,
 			IsStaked: stakes[op.GetPaymaster()] != nil && stakes[op.GetPaymaster()].Staked,
 		},
-	}, nil
+	}
+
+	if si.EIP7702Auth && delegateAddr != (common.Address{}) && di.TopLevelTargetAddress == delegateAddr {
+		entities["delegate"] = struct {
+			Address  common.Address
+			Info     tracer.CallFromEntryPointInfo
+			IsStaked bool
+		}{
+			Address:  delegateAddr,
+			Info:     di,
+			IsStaked: stakes[delegateAddr] != nil && stakes[delegateAddr].Staked,
+		}
+	}
+
+	return entities, nil
 }
 
 func addr2KnownEntity(op *userop.UserOperation, addr common.Address) string {

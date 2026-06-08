@@ -95,9 +95,22 @@
 - [x] Write unit tests for all new code (coverage: methods=100%, reverts=78%, simulation=~50%, transaction=52.9%)
 - [x] `go build ./...`, `go vet ./...`, and `go test -count=1 ./pkg/entrypoint/...` all pass
 
-## Week 3: Features & Integration (Days 15-21)
+### Days 15-17: EIP-7702 Support
 
-- [ ] EIP-7702 support
+- [x] Add `EIP7702Auth` field to UserOperation struct (already present in v0.8/v0.9)
+- [x] Update `pkg/client/client.go`: Accept `eip7702Auth` parameter in `eth_sendUserOperation`
+- [x] Update `pkg/modules/checks/standalone.go`: Validate EIP-7702 authorization for v0.8/v0.9
+- [x] Update `pkg/modules/checks/auth.go`: Fix v08/v09 auth type handling, normalize yParity (0/1 and 27/28)
+- [x] Update `pkg/entrypoint/filter/event_eip7702.go`: Handle `EIP7702AccountInitialized` event
+- [x] Update `pkg/modules/entities/`: Reputation tracking for 7702 accounts
+- [x] Add `Simple7702Account` contract type support with `MapContractTypeWithClient`
+- [x] Update `pkg/entrypoint/simulation/`: Check delegation address correctness
+- [x] Update `pkg/entrypoint/v08/simulation/` and `v09/simulation/`: Add `DelegateAddress` to `TraceInput`, pass delegate to `NewKnownEntity`
+- [x] Write unit tests for all EIP-7702 code (auth tests: 14 tests, event tests: 1 test, simulation tests: 2 new tests per version, contracts tests: 4 tests, ERC-7562 tests: 7 tests)
+- [x] `go build ./...`, `go test -count=1 ./pkg/modules/checks/...`, `go test -count=1 ./pkg/entrypoint/...` all pass
+
+## Week 3: Features & Integration (Days 18-21)
+
 - [ ] Paymaster signature flow
 - [ ] Block number validity
 - [ ] Client & bundler integration

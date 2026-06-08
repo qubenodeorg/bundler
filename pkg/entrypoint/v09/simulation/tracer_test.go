@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	simutils "github.com/zarbanio/bundler/pkg/entrypoint/simulation"
 	"github.com/zarbanio/bundler/pkg/tracer"
 )
@@ -17,7 +18,7 @@ func TestProcessTraceResult_TSTOREBannedV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"TSTORE": 1}
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (TSTORE banned)")
 	}
@@ -31,7 +32,7 @@ func TestProcessTraceResult_TLOADBannedV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"TLOAD": 1}
 	res.CallsFromEntryPoint[0].TLOAD = 1
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (TLOAD banned)")
 	}
@@ -45,7 +46,7 @@ func TestProcessTraceResult_EIP7702AuthFlagV09(t *testing.T) {
 	res := validTraceResultV09(op)
 	res.CallsFromEntryPoint[0].EIP7702Auth = true
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -64,7 +65,7 @@ func TestProcessTraceResult_PaymasterSignatureFlagV09(t *testing.T) {
 	res := validTraceResultV09(op)
 	res.CallsFromEntryPoint[0].PaymasterSignature = true
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -85,7 +86,7 @@ func TestProcessTraceResult_NewFields_RoundTripV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].EIP7702Auth = true
 	res.CallsFromEntryPoint[0].PaymasterSignature = true
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -105,7 +106,7 @@ func TestProcessTraceResult_UnstakedBannedTSTOREV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"TSTORE": 1}
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (unstaked TSTORE banned)")
 	}

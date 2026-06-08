@@ -34,6 +34,7 @@ func (m *mockOp) GetPreVerificationGas() *big.Int                   { return big
 func (m *mockOp) GetMaxFeePerGas() *big.Int                         { return m.maxFee }
 func (m *mockOp) GetMaxPriorityFeePerGas() *big.Int                 { return big.NewInt(0) }
 func (m *mockOp) GetSignature() []byte                              { return nil }
+func (m *mockOp) GetEIP7702Auth() interface{}                       { return nil }
 func (m *mockOp) GetPaymasterVerificationGasLimit() *big.Int        { return big.NewInt(0) }
 func (m *mockOp) GetPaymasterPostOpGasLimit() *big.Int              { return big.NewInt(0) }
 func (m *mockOp) GetPaymasterData() []byte                          { return nil }

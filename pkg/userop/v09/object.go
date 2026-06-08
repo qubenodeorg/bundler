@@ -132,6 +132,14 @@ func (op *UserOperation) GetSignature() []byte {
 	return op.Signature
 }
 
+// GetEIP7702Auth returns the EIP-7702 authorization.
+func (op *UserOperation) GetEIP7702Auth() interface{} {
+	if op.EIP7702Auth == nil {
+		return nil
+	}
+	return op.EIP7702Auth
+}
+
 // GetPaymasterVerificationGasLimit returns the paymaster verification gas limit.
 func (op *UserOperation) GetPaymasterVerificationGasLimit() *big.Int {
 	return op.PaymasterVerificationGasLimit

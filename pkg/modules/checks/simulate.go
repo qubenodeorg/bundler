@@ -42,13 +42,20 @@ func simulateWithTrace(
 	tracer string,
 	stakes simulation.EntityStakes,
 ) error {
+	// Extract delegate address from EIP-7702 auth BEFORE any type conversion.
+	delegateAddr := GetEIP7702Address(op.GetEIP7702Auth())
+
 	v06Op, ok := op.(*userop.UserOperation)
 	if !ok {
-		return errors.NewRPCError(
-			errors.BANNED_OPCODE,
-			"v0.7+ simulation expects a *userop.UserOperation",
-			nil,
-		)
+		converted, convErr := gas.ConvertToV06(op)
+		if convErr != nil {
+			return errors.NewRPCError(
+				errors.BANNED_OPCODE,
+				convErr.Error(),
+				convErr.Error(),
+			)
+		}
+		v06Op = converted
 	}
 
 	out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
@@ -60,6 +67,7 @@ func simulateWithTrace(
 		Tracer:             tracer,
 		Stakes:             stakes,
 		AltMempools:        alt,
+		DelegateAddress:    delegateAddr,
 	})
 	if err != nil {
 		return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
