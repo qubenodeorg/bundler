@@ -99,6 +99,11 @@ func (op *UserOperation) GetSignature() []byte {
 	return op.Signature
 }
 
+// GetEIP7702Auth returns nil for v0.6.
+func (op *UserOperation) GetEIP7702Auth() interface{} {
+	return nil
+}
+
 // GetPaymasterVerificationGasLimit returns 0 for v0.6.
 func (op *UserOperation) GetPaymasterVerificationGasLimit() *big.Int {
 	return big.NewInt(0)

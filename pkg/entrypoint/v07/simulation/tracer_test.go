@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
 	simutils "github.com/zarbanio/bundler/pkg/entrypoint/simulation"
 	"github.com/zarbanio/bundler/pkg/tracer"
 )
@@ -18,7 +19,7 @@ func TestProcessTraceResult_TSTOREBanned_StakedV07(t *testing.T) {
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"TSTORE": 1}
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (TSTORE banned)")
 	}
@@ -32,7 +33,7 @@ func TestProcessTraceResult_TLOADBanned_StakedV07(t *testing.T) {
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"TLOAD": 1}
 	res.CallsFromEntryPoint[0].TLOAD = 1
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (TLOAD banned)")
 	}
@@ -48,7 +49,7 @@ func TestProcessTraceResult_NewFields_RoundTripV07(t *testing.T) {
 	res.CallsFromEntryPoint[0].TSTORE = 2
 	res.CallsFromEntryPoint[0].TLOAD = 3
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -66,7 +67,7 @@ func TestProcessTraceResult_AltMempoolCollection_StakedV07(t *testing.T) {
 	}
 	res := validTraceResult(op)
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}

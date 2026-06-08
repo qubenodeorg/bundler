@@ -61,7 +61,7 @@ func TestProcessTraceResult_Success(t *testing.T) {
 	stakes := mockStakes()
 	res := validTraceResult(op)
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -76,7 +76,7 @@ func TestProcessTraceResult_OOG(t *testing.T) {
 	res := validTraceResult(op)
 	res.CallsFromEntryPoint[0].OOG = true
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (OOG)")
 	}
@@ -88,7 +88,7 @@ func TestProcessTraceResult_BannedOpcode(t *testing.T) {
 	res := validTraceResult(op)
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"GASPRICE": 1}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (banned opcode)")
 	}
@@ -102,7 +102,7 @@ func TestProcessTraceResult_UnstakedBannedOpcode(t *testing.T) {
 	res := validTraceResult(op)
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"BALANCE": 1}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (unstaked banned opcode)")
 	}
@@ -117,7 +117,7 @@ func TestProcessTraceResult_ExtCodeAccessEntryPoint(t *testing.T) {
 		ep: "EXTCODESIZE",
 	}
 
-	_, err := ProcessTraceResult(op, ep, stakes, res)
+	_, err := ProcessTraceResult(op, ep, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (EXTCODE access to EntryPoint)")
 	}
@@ -144,7 +144,7 @@ func TestProcessTraceResult_BalanceOfCall(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, ep, stakes, res)
+	_, err := ProcessTraceResult(op, ep, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (balanceOf on EntryPoint)")
 	}
@@ -172,7 +172,7 @@ func TestProcessTraceResult_ForbiddenValueTransfer(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, ep, stakes, res)
+	_, err := ProcessTraceResult(op, ep, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (forbidden value transfer)")
 	}
@@ -217,7 +217,7 @@ func TestProcessTraceResult_UnstakedPaymasterWithContext(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (unstaked paymaster with context)")
 	}
@@ -247,7 +247,7 @@ func TestProcessTraceResult_CollectsTouchedContracts(t *testing.T) {
 		OOG:                   false,
 	})
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -293,7 +293,7 @@ func TestProcessTraceResult_InvalidPaymasterOutput(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (invalid paymaster output)")
 	}

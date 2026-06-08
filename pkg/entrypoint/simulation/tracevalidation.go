@@ -32,6 +32,7 @@ type TraceInput struct {
 	Tracer             string
 	Stakes             EntityStakes
 	AltMempools        *altmempools.Directory
+	DelegateAddress    common.Address
 }
 
 type TraceOutput struct {
@@ -77,7 +78,7 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	knownEntity, err := newKnownEntity(in.Op, &res, in.Stakes)
+	knownEntity, err := newKnownEntity(in.Op, &res, in.Stakes, in.DelegateAddress)
 	altMempoolIds := []string{}
 	if err != nil {
 		return nil, err

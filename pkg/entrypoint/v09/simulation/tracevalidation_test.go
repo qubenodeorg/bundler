@@ -61,7 +61,7 @@ func TestProcessTraceResult_SuccessV09(t *testing.T) {
 	stakes := mockStakesV09()
 	res := validTraceResultV09(op)
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
@@ -76,7 +76,7 @@ func TestProcessTraceResult_OOGV09(t *testing.T) {
 	res := validTraceResultV09(op)
 	res.CallsFromEntryPoint[0].OOG = true
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (OOG)")
 	}
@@ -88,7 +88,7 @@ func TestProcessTraceResult_BannedOpcodeV09(t *testing.T) {
 	res := validTraceResultV09(op)
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"GASPRICE": 1}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (banned opcode)")
 	}
@@ -102,7 +102,7 @@ func TestProcessTraceResult_UnstakedBannedOpcodeV09(t *testing.T) {
 	res := validTraceResultV09(op)
 	res.CallsFromEntryPoint[0].Opcodes = tracer.Counts{"BALANCE": 1}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (unstaked banned opcode)")
 	}
@@ -117,7 +117,7 @@ func TestProcessTraceResult_ExtCodeAccessEntryPointV09(t *testing.T) {
 		ep: "EXTCODESIZE",
 	}
 
-	_, err := ProcessTraceResult(op, ep, stakes, res)
+	_, err := ProcessTraceResult(op, ep, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (EXTCODE access to EntryPoint)")
 	}
@@ -144,7 +144,7 @@ func TestProcessTraceResult_BalanceOfCallV09(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, ep, stakes, res)
+	_, err := ProcessTraceResult(op, ep, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (balanceOf on EntryPoint)")
 	}
@@ -172,7 +172,7 @@ func TestProcessTraceResult_ForbiddenValueTransferV09(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, ep, stakes, res)
+	_, err := ProcessTraceResult(op, ep, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (forbidden value transfer)")
 	}
@@ -215,7 +215,7 @@ func TestProcessTraceResult_UnstakedPaymasterWithContextV09(t *testing.T) {
 		},
 	}
 
-	_, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err == nil {
 		t.Fatal("ProcessTraceResult: got nil, want err (unstaked paymaster with context)")
 	}
@@ -241,15 +241,73 @@ func TestProcessTraceResult_CollectsTouchedContractsV09(t *testing.T) {
 		ContractSize: tracer.ContractSizeMap{
 			deployed: {ContractSize: 100, Opcode: "EXTCODESIZE"},
 		},
-		ExtCodeAccessInfo: tracer.ExtCodeAccessInfoMap{},
-		OOG:               false,
+		ExtCodeAccessInfo:     tracer.ExtCodeAccessInfoMap{},
+		OOG:                   false,
 	})
 
-	out, err := ProcessTraceResult(op, op.Sender, stakes, res)
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
 	if err != nil {
 		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
 	}
 	if len(out.TouchedContracts) == 0 {
 		t.Fatal("ProcessTraceResult: got 0 touched contracts, want > 0")
+	}
+}
+
+func TestProcessTraceResult_EIP7702DelegateV09(t *testing.T) {
+	delegate := common.HexToAddress("0x5555555555555555555555555555555555555555")
+	op := validMockOpV09()
+
+	stakes := simutils.EntityStakes{
+		op.Sender:  {Deposit: big.NewInt(1000000), Staked: true, Stake: big.NewInt(1000000)},
+		delegate: {Deposit: big.NewInt(1000000), Staked: true, Stake: big.NewInt(1000000)},
+	}
+
+	res := validTraceResultV09(op)
+	res.CallsFromEntryPoint[0].EIP7702Auth = true
+	// Add delegate trace so NewKnownEntity creates the delegate entity
+	res.CallsFromEntryPoint = append(res.CallsFromEntryPoint, tracer.CallFromEntryPointInfo{
+		TopLevelMethodSig:     common.Hex2Bytes("b61d27f6"),
+		TopLevelTargetAddress: delegate,
+		Opcodes:               tracer.Counts{},
+		Access:                tracer.AccessMap{},
+		ContractSize:          tracer.ContractSizeMap{},
+		ExtCodeAccessInfo:     tracer.ExtCodeAccessInfoMap{},
+		OOG:                   false,
+	})
+
+	out, err := ProcessTraceResult(op, op.Sender, stakes, res, delegate)
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil", err)
+	}
+	if out == nil {
+		t.Fatal("ProcessTraceResult: got nil output")
+	}
+}
+
+func TestProcessTraceResult_EIP7702DelegateBannedOpcodeV09(t *testing.T) {
+	delegate := common.HexToAddress("0x5555555555555555555555555555555555555555")
+	op := validMockOpV09()
+
+	stakes := simutils.EntityStakes{
+		op.Sender:  {Deposit: big.NewInt(1000000), Staked: true, Stake: big.NewInt(1000000)},
+		delegate: {Deposit: big.NewInt(0), Staked: false, Stake: big.NewInt(0)},
+	}
+
+	res := validTraceResultV09(op)
+	res.CallsFromEntryPoint[0].EIP7702Auth = true
+	res.CallsFromEntryPoint = append(res.CallsFromEntryPoint, tracer.CallFromEntryPointInfo{
+		TopLevelMethodSig:     common.Hex2Bytes("b61d27f6"),
+		TopLevelTargetAddress: delegate,
+		Opcodes:               tracer.Counts{"BALANCE": 1},
+		Access:                tracer.AccessMap{},
+		ContractSize:          tracer.ContractSizeMap{},
+		ExtCodeAccessInfo:     tracer.ExtCodeAccessInfoMap{},
+		OOG:                   false,
+	})
+
+	_, err := ProcessTraceResult(op, op.Sender, stakes, res, delegate)
+	if err == nil {
+		t.Fatal("ProcessTraceResult: got nil, want err (unstaked delegate banned opcode)")
 	}
 }

@@ -82,7 +82,7 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, &res)
+	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, &res, common.Address{})
 }
 
 func ProcessTraceResult(
@@ -90,8 +90,9 @@ func ProcessTraceResult(
 	entryPoint common.Address,
 	stakes simutils.EntityStakes,
 	res *tracer.BundlerCollectorReturn,
+	delegateAddr common.Address,
 ) (*TraceOutput, error) {
-	knownEntity, err := simutils.NewKnownEntity(op, res, stakes)
+	knownEntity, err := simutils.NewKnownEntity(op, res, stakes, delegateAddr)
 	altMempoolIds := []string{}
 	if err != nil {
 		return nil, err

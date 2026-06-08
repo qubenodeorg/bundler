@@ -12,6 +12,16 @@ import (
 	"github.com/zarbanio/bundler/pkg/userop/v09"
 )
 
+// Authorization represents an EIP-7702 authorization tuple.
+type Authorization struct {
+	ChainID *big.Int       `json:"chainId"`
+	Address common.Address `json:"address"`
+	Nonce   *big.Int       `json:"nonce"`
+	YParity uint8          `json:"yParity"`
+	R       *big.Int       `json:"r"`
+	S       *big.Int       `json:"s"`
+}
+
 // ErrBadUserOperationData is returned when user operation data cannot be decoded.
 var ErrBadUserOperationData = errors.New("cannot decode UserOperation")
 
@@ -39,6 +49,7 @@ type UserOperationInterface interface {
 	GetMaxFeePerGas() *big.Int
 	GetMaxPriorityFeePerGas() *big.Int
 	GetSignature() []byte
+	GetEIP7702Auth() interface{}
 	GetPaymasterVerificationGasLimit() *big.Int
 	GetPaymasterPostOpGasLimit() *big.Int
 	GetPaymasterData() []byte
