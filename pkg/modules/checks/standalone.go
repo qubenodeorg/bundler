@@ -89,8 +89,36 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 			g.Go(func() error { return ValidateFeePerGas(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
 			g.Go(func() error { return ValidatePendingOps(op, ctx.GetPendingSenderOps()) })
 			g.Go(func() error { return ValidateGasAvailable(op, s.maxBatchGasLimit) })
+		case userop.V0_9:
+			// v0.9 allows initCode with existing accounts
+			op := ctx.UserOp
+			g.Go(func() error { return ValidateSenderV09(op, gc) })
+			g.Go(func() error { return ValidateFactory(op) })
+			g.Go(func() error { return ValidateFactoryData(op) })
+			g.Go(func() error {
+				return ValidateVerificationGasV07(op, s.ov, s.maxVerificationGas)
+			})
+			g.Go(func() error {
+				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.Version)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterData(op, ctx.Version)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterVerificationGasLimit(op, s.maxVerificationGas)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterPostOpGasLimit(op)
+			})
+			g.Go(func() error {
+				return ValidatePaymasterSignature(op, ctx.Version)
+			})
+			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ov) })
+			g.Go(func() error { return ValidateFeePerGasV07(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
+			g.Go(func() error { return ValidatePendingOpsV07(op, ctx.GetPendingSenderOps()) })
+			g.Go(func() error { return ValidateGasAvailableV07(op, s.ov, s.maxBatchGasLimit) })
 		default:
-			// v0.7+ uses the interface-based validation functions
+			// v0.7/v0.8 use the interface-based validation functions
 			op := ctx.UserOp
 			g.Go(func() error { return ValidateSenderV07(op, gc) })
 			g.Go(func() error { return ValidateFactory(op) })

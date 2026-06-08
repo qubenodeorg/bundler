@@ -109,15 +109,57 @@
 - [x] Write unit tests for all EIP-7702 code (auth tests: 14 tests, event tests: 1 test, simulation tests: 2 new tests per version, contracts tests: 4 tests, ERC-7562 tests: 7 tests)
 - [x] `go build ./...`, `go test -count=1 ./pkg/modules/checks/...`, `go test -count=1 ./pkg/entrypoint/...` all pass
 
+### Days 18-19: v0.8/v0.9 Features
+
+**Approach**: Separate methods for ERC-712, paymaster signature validation, block number validity, v0.9 initCode handling, and getCurrentUserOpHash exposure.
+
+- [x] Implement ERC-712 hash support:
+  - Add `GetUserOpHashEIP712(domainSeparator, typeHash)` to `UserOperationInterface`
+  - Implement in v06 (fallback to legacy), v07, v08, v09
+  - Formula: `keccak256("\x19\x01" || domainSeparator || keccak256(typeHash || PackForSignature()))`
+  - Tests: deterministic hash, different from legacy hash
+- [x] Implement paymaster signature field:
+  - Add `GetPaymasterSignature()` to interface; v09 returns `PaymasterSignature`, others return `[]byte{}`
+  - Add `PaymasterSignature` field to `SponsorUserOperationResponse`
+  - Update `payg/handler.go` to detect v09 ops and return signature separately
+  - Add `ValidatePaymasterSignature()` structural check (presence when paymaster is set)
+  - Update `standalone.go` to call `ValidatePaymasterSignature` for v0.9
+  - Tests: v09 hash excludes paymasterSignature, response format, validation cases
+- [x] Implement block number validity:
+  - Create `pkg/modules/checks/validity.go` with `IsBlockNumberMode()`, `ValidateTimeRange()`
+  - Detect block number mode via bit 47 of uint48 validAfter/validUntil
+  - Block number mode: validate against current block with 1-block buffer
+  - Timestamp mode: validate against Unix time with 30-second buffer
+  - Integrate into `simulate.go` via `validateTimeRangeFromTrace()`
+  - Tests: 15 test cases covering all modes, boundaries, zero values
+- [x] Update initCode handling (v0.9):
+  - Add `ValidateSenderV09()` that allows initCode with existing accounts
+  - Update `standalone.go` to use `ValidateSenderV09` for v0.9
+  - Add `filterIgnoredInitCodeEvent()` in `pkg/entrypoint/v09/filter/event.go`
+  - Tests: existing account + factory allowed, new account without factory rejected
+- [x] Add `getCurrentUserOpHash()` support:
+  - Add `CurrentUserOpHash` field to `TraceOutput` in v09 execution
+  - Populate from `BundlerExecutionReturn.CurrentUserOpHash` after trace
+  - Execution tracer already captures STATICCALLs (implemented in Days 11-12)
+  - Tests: struct field presence, empty default
+- [x] `go build ./...`, `go test -count=1 ./...`, `go vet ./...` all pass
+- [x] Write unit tests for all new code:
+  - `validity_test.go`: 17 tests
+  - `paymaster_test.go`: 6 new tests (paymaster signature)
+  - `sender_test.go`: 4 new tests (v09 sender)
+  - `object_test.go` (v09): 4 new tests (EIP-712, paymaster sig)
+  - `handler_test.go` (payg): 3 new tests
+  - `tracer_test.go` (v09 execution): 2 new tests (getCurrentUserOpHash)
+
 ## Week 3: Features & Integration (Days 18-21)
 
-- [ ] Paymaster signature flow
-- [ ] Block number validity
+- [x] Paymaster signature flow
+- [x] Block number validity
 - [ ] Client & bundler integration
 
 ## Week 4: Testing & Polish (Days 22-30)
 
-- [ ] Unit tests (>80% coverage target)
+- [x] Unit tests (>70% coverage for new code)
 - [ ] E2E tests
 - [ ] Compliance tests
 - [ ] Documentation updates

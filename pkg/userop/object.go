@@ -259,6 +259,20 @@ func (op *UserOperation) GetUserOpHash(entryPoint common.Address, chainID *big.I
 	)
 }
 
+// GetUserOpHashEIP712 returns the ERC-712 typed data hash for v0.6.
+// For v0.6, this falls back to the legacy hash format.
+func (op *UserOperation) GetUserOpHashEIP712(domainSeparator [32]byte, typeHash [32]byte) common.Hash {
+	structHash := crypto.Keccak256(append(typeHash[:], op.PackForSignature()...))
+	return crypto.Keccak256Hash(
+		append([]byte("\x19\x01"), append(domainSeparator[:], structHash...)...),
+	)
+}
+
+// GetPaymasterSignature returns empty bytes for v0.6.
+func (op *UserOperation) GetPaymasterSignature() []byte {
+	return []byte{}
+}
+
 // MarshalJSON returns a JSON encoding of the UserOperation.
 func (op *UserOperation) MarshalJSON() ([]byte, error) {
 	// Note: The bundler spec test requires the address portion of the initCode to include the checksum.

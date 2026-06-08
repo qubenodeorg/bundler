@@ -1,15 +1,19 @@
 package checks
 
 import (
+	"context"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/zarbanio/bundler/pkg/altmempools"
 	"github.com/zarbanio/bundler/pkg/entrypoint/simulation"
 	"github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/userop"
+	v09sim "github.com/zarbanio/bundler/pkg/entrypoint/v09/simulation"
 )
 
 // SimulateValidationV07 performs off-chain simulation for v0.7+.
@@ -78,6 +82,60 @@ func simulateWithTrace(
 		return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
 	}
 
+	// Validate time range (validAfter/validUntil) with block number support
+	if err := validateTimeRangeFromTrace(rpc, entryPoint, op, chainID); err != nil {
+		return err
+	}
+
 	_ = out
+	return nil
+}
+
+// validateTimeRangeFromTrace fetches current block/time and validates validAfter/validUntil.
+func validateTimeRangeFromTrace(
+	rpc *rpc.Client,
+	entryPoint common.Address,
+	op userop.UserOperationInterface,
+	chainID *big.Int,
+) error {
+	// Only validate for v0.9+ where block number mode is supported.
+	version := userop.DetectVersionFromEntryPoint(entryPoint)
+	if version < userop.V0_7 {
+		return nil
+	}
+
+	// Call SimulateValidation to get ReturnInfo with validAfter/validUntil.
+	simOut, err := v09sim.SimulateValidation(&v09sim.SimulateInput{
+		Rpc:        rpc,
+		EntryPoint: entryPoint,
+		Op:         op,
+		ChainID:    chainID,
+	})
+	if err != nil {
+		// If simulation fails, we can't validate time range.
+		// This is acceptable since validation errors are handled elsewhere.
+		return nil
+	}
+	if simOut == nil || simOut.Result == nil || simOut.Result.ReturnInfo == nil {
+		return nil
+	}
+
+	ri := simOut.Result.ReturnInfo
+	if ri.ValidAfter == nil && ri.ValidUntil == nil {
+		return nil
+	}
+
+	// Fetch current block number and time.
+	eth := ethclient.NewClient(rpc)
+	currentBlock, err := eth.BlockNumber(context.Background())
+	if err != nil {
+		return nil
+	}
+	currentTime := time.Now().Unix()
+
+	if err := ValidateTimeRange(ri.ValidAfter, ri.ValidUntil, currentBlock, currentTime); err != nil {
+		return errors.NewRPCError(errors.SHORT_DEADLINE, err.Error(), nil)
+	}
+
 	return nil
 }

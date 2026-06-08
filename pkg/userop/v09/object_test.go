@@ -319,3 +319,52 @@ func TestV09NewMissingField(t *testing.T) {
 		t.Fatal("expected error for missing fields")
 	}
 }
+
+func TestV09GetUserOpHashEIP712(t *testing.T) {
+	op := mockV09Op()
+	domainSeparator := [32]byte{1, 2, 3}
+	typeHash := [32]byte{4, 5, 6}
+
+	hash := op.GetUserOpHashEIP712(domainSeparator, typeHash)
+	if hash == (common.Hash{}) {
+		t.Fatal("GetUserOpHashEIP712 returned zero hash")
+	}
+
+	// Verify it's different from the legacy hash
+	legacyHash := op.GetUserOpHash(common.HexToAddress("0x433709009B8330FDa32311DF1C2AFA402eD8D009"), big.NewInt(1))
+	if hash == legacyHash {
+		t.Fatal("EIP-712 hash should differ from legacy hash")
+	}
+}
+
+func TestV09GetUserOpHashEIP712Deterministic(t *testing.T) {
+	op := mockV09Op()
+	domainSeparator := [32]byte{1, 2, 3}
+	typeHash := [32]byte{4, 5, 6}
+
+	hash1 := op.GetUserOpHashEIP712(domainSeparator, typeHash)
+	hash2 := op.GetUserOpHashEIP712(domainSeparator, typeHash)
+	if hash1 != hash2 {
+		t.Fatal("EIP-712 hash should be deterministic")
+	}
+}
+
+func TestV09GetPaymasterSignature(t *testing.T) {
+	op := mockV09OpWithPaymasterSig()
+	sig := op.GetPaymasterSignature()
+	if len(sig) == 0 {
+		t.Fatal("GetPaymasterSignature should not be empty")
+	}
+	want := common.Hex2Bytes("cafebabe")
+	if string(sig) != string(want) {
+		t.Fatalf("got %x, want %x", sig, want)
+	}
+}
+
+func TestV09GetPaymasterSignatureEmpty(t *testing.T) {
+	op := mockV09Op()
+	sig := op.GetPaymasterSignature()
+	if len(sig) != 0 {
+		t.Fatalf("got %d bytes, want 0", len(sig))
+	}
+}

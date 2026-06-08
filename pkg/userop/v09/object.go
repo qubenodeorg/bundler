@@ -303,6 +303,19 @@ func (op *UserOperation) GetUserOpHash(entryPoint common.Address, chainID *big.I
 	)
 }
 
+// GetUserOpHashEIP712 returns the ERC-712 typed data hash.
+func (op *UserOperation) GetUserOpHashEIP712(domainSeparator [32]byte, typeHash [32]byte) common.Hash {
+	structHash := crypto.Keccak256(append(typeHash[:], op.PackForSignature()...))
+	return crypto.Keccak256Hash(
+		append([]byte("\x19\x01"), append(domainSeparator[:], structHash...)...),
+	)
+}
+
+// GetPaymasterSignature returns the paymaster signature for v0.9.
+func (op *UserOperation) GetPaymasterSignature() []byte {
+	return op.PaymasterSignature
+}
+
 // MarshalJSON returns a JSON encoding of the UserOperation.
 func (op *UserOperation) MarshalJSON() ([]byte, error) {
 	type authJSON struct {

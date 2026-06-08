@@ -59,6 +59,8 @@ type UserOperationInterface interface {
 	Pack() []byte
 	PackForSignature() []byte
 	GetUserOpHash(entryPoint common.Address, chainID *big.Int) common.Hash
+	GetUserOpHashEIP712(domainSeparator [32]byte, typeHash [32]byte) common.Hash
+	GetPaymasterSignature() []byte
 	MarshalJSON() ([]byte, error)
 	ToMap() (map[string]any, error)
 }
