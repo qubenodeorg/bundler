@@ -259,13 +259,15 @@ func (op *UserOperation) GetUserOpHash(entryPoint common.Address, chainID *big.I
 	)
 }
 
-// GetUserOpHashEIP712 returns the ERC-712 typed data hash for v0.6.
-// For v0.6, this falls back to the legacy hash format.
+// GetUserOpHashEIP712 computes the ERC-712 typed data hash for v0.6
+// using the provided typeHash and domainSeparator.
 func (op *UserOperation) GetUserOpHashEIP712(domainSeparator [32]byte, typeHash [32]byte) common.Hash {
 	structHash := crypto.Keccak256(append(typeHash[:], op.PackForSignature()...))
-	return crypto.Keccak256Hash(
-		append([]byte("\x19\x01"), append(domainSeparator[:], structHash...)...),
-	)
+	buf := make([]byte, 2+32+len(structHash))
+	copy(buf[0:2], "\x19\x01")
+	copy(buf[2:34], domainSeparator[:])
+	copy(buf[34:], structHash)
+	return crypto.Keccak256Hash(buf)
 }
 
 // GetPaymasterSignature returns empty bytes for v0.6.

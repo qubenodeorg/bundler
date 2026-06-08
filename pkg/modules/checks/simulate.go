@@ -98,13 +98,15 @@ func validateTimeRangeFromTrace(
 	op userop.UserOperationInterface,
 	chainID *big.Int,
 ) error {
-	// Only validate for v0.9+ where block number mode is supported.
+	// Only validate for v0.7+ where validAfter/validUntil is supported.
 	version := userop.DetectVersionFromEntryPoint(entryPoint)
 	if version < userop.V0_7 {
 		return nil
 	}
 
 	// Call SimulateValidation to get ReturnInfo with validAfter/validUntil.
+	// This is a best-effort check; if simulation fails, we skip time-range
+	// validation since the main validation path will catch errors.
 	simOut, err := v09sim.SimulateValidation(&v09sim.SimulateInput{
 		Rpc:        rpc,
 		EntryPoint: entryPoint,
@@ -112,16 +114,17 @@ func validateTimeRangeFromTrace(
 		ChainID:    chainID,
 	})
 	if err != nil {
-		// If simulation fails, we can't validate time range.
-		// This is acceptable since validation errors are handled elsewhere.
+		// Time-range validation skipped: SimulateValidation failed.
 		return nil
 	}
 	if simOut == nil || simOut.Result == nil || simOut.Result.ReturnInfo == nil {
+		// Time-range validation skipped: no ReturnInfo available.
 		return nil
 	}
 
 	ri := simOut.Result.ReturnInfo
 	if ri.ValidAfter == nil && ri.ValidUntil == nil {
+		// No time restrictions set.
 		return nil
 	}
 
@@ -129,6 +132,7 @@ func validateTimeRangeFromTrace(
 	eth := ethclient.NewClient(rpc)
 	currentBlock, err := eth.BlockNumber(context.Background())
 	if err != nil {
+		// Time-range validation skipped: unable to fetch current block number.
 		return nil
 	}
 	currentTime := time.Now().Unix()

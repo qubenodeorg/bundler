@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/internal/testutils"
 	"github.com/zarbanio/bundler/pkg/userop"
+	"github.com/zarbanio/bundler/pkg/userop/v07"
 	"github.com/zarbanio/bundler/pkg/userop/v09"
 )
 
@@ -145,7 +146,7 @@ func TestValidatePaymasterSignatureV09WithPaymasterAndSig(t *testing.T) {
 }
 
 func TestValidatePaymasterSignatureV07WithPaymasterNoSig(t *testing.T) {
-	op := &v09.UserOperation{
+	op := &v07.UserOperation{
 		Sender:    common.HexToAddress("0x1234567890123456789012345678901234567890"),
 		Paymaster: common.HexToAddress("0x1234567890123456789012345678901234567890"),
 	}

@@ -131,7 +131,7 @@
   - Block number mode: validate against current block with 1-block buffer
   - Timestamp mode: validate against Unix time with 30-second buffer
   - Integrate into `simulate.go` via `validateTimeRangeFromTrace()`
-  - Tests: 15 test cases covering all modes, boundaries, zero values
+  - Tests: 17 test cases covering all modes, boundaries, zero values
 - [x] Update initCode handling (v0.9):
   - Add `ValidateSenderV09()` that allows initCode with existing accounts
   - Update `standalone.go` to use `ValidateSenderV09` for v0.9

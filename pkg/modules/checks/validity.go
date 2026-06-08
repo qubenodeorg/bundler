@@ -53,7 +53,12 @@ func ValidateTimeRange(validAfter, validUntil *big.Int, currentBlock uint64, cur
 		if IsBlockNumberMode(validUntil) {
 			blockNum := stripBlockNumberModeBit(validUntil)
 			buffer := uint64(1) // 1 block buffer
-			if currentBlock >= blockNum-buffer {
+			// Guard against underflow when blockNum < buffer.
+			threshold := uint64(0)
+			if blockNum > buffer {
+				threshold = blockNum - buffer
+			}
+			if currentBlock >= threshold {
 				return fmt.Errorf("validUntil block %d too soon (current: %d)", blockNum, currentBlock)
 			}
 		} else {
