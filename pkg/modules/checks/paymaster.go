@@ -125,3 +125,17 @@ func ValidatePaymasterPostOpGasLimit(op userop.UserOperationInterface) error {
 	}
 	return nil
 }
+
+// ValidatePaymasterSignature checks that paymasterSignature is present when a paymaster is set (v0.9+).
+func ValidatePaymasterSignature(op userop.UserOperationInterface, version userop.Version) error {
+	if version < userop.V0_9 {
+		return nil
+	}
+	if op.GetPaymaster() == (common.Address{}) {
+		return nil
+	}
+	if len(op.GetPaymasterSignature()) == 0 {
+		return errors.New("paymasterSignature: required when paymaster is set")
+	}
+	return nil
+}

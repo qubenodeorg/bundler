@@ -71,3 +71,21 @@ func containsHex(s, h string) bool {
 	}
 	return false
 }
+
+// TestTraceOutputCurrentUserOpHash ensures the TraceOutput struct has the CurrentUserOpHash field.
+func TestTraceOutputCurrentUserOpHash(t *testing.T) {
+	out := &TraceOutput{
+		CurrentUserOpHash: "0x1234abcd",
+	}
+	if out.CurrentUserOpHash != "0x1234abcd" {
+		t.Fatalf("CurrentUserOpHash not set correctly")
+	}
+}
+
+// TestTraceOutputEmptyCurrentUserOpHash ensures empty CurrentUserOpHash is handled.
+func TestTraceOutputEmptyCurrentUserOpHash(t *testing.T) {
+	out := &TraceOutput{}
+	if out.CurrentUserOpHash != "" {
+		t.Fatalf("CurrentUserOpHash should be empty by default")
+	}
+}

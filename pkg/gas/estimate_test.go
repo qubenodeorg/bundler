@@ -44,6 +44,8 @@ func (m *mockOp) GetDynamicGasPrice(basefee *big.Int) *big.Int      { return big
 func (m *mockOp) Pack() []byte                                      { return nil }
 func (m *mockOp) PackForSignature() []byte                          { return nil }
 func (m *mockOp) GetUserOpHash(ep common.Address, chainID *big.Int) common.Hash { return common.Hash{} }
+func (m *mockOp) GetUserOpHashEIP712(domainSeparator [32]byte, typeHash [32]byte) common.Hash { return common.Hash{} }
+func (m *mockOp) GetPaymasterSignature() []byte                     { return nil }
 func (m *mockOp) MarshalJSON() ([]byte, error)                      { return nil, m.toMapErr }
 func (m *mockOp) ToMap() (map[string]any, error) {
 	if m.toMapErr != nil {

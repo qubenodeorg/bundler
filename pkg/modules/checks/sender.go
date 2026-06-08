@@ -49,3 +49,19 @@ func ValidateSenderV07(op userop.UserOperationInterface, gc GetCodeFunc) error {
 
 	return nil
 }
+
+// ValidateSenderV09 validates the sender for v0.9 UserOperations.
+// v0.9 allows initCode even when the account already exists (silently ignored).
+func ValidateSenderV09(op userop.UserOperationInterface, gc GetCodeFunc) error {
+	bytecode, err := gc(op.GetSender())
+	if err != nil {
+		return err
+	}
+
+	hasFactory := op.GetFactory() != zeroAddress
+	if len(bytecode) == 0 && !hasFactory {
+		return ErrSenderNotDeployed
+	}
+	// v0.9: ALLOW initCode with existing accounts (no ErrSenderAlreadyDeploy)
+	return nil
+}

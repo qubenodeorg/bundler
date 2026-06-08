@@ -36,9 +36,10 @@ type TraceInput struct {
 }
 
 type TraceOutput struct {
-	Trace  *tracer.BundlerExecutionReturn
-	Result *v09reverts.ExecutionResultRevert
-	Event  *epv09.V09UserOperationEvent
+	Trace             *tracer.BundlerExecutionReturn
+	Result            *v09reverts.ExecutionResultRevert
+	Event             *epv09.V09UserOperationEvent
+	CurrentUserOpHash string // Populated when the account calls getCurrentUserOpHash() during execution
 }
 
 func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
@@ -107,6 +108,7 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 	out.Trace = callTrace
+	out.CurrentUserOpHash = callTrace.CurrentUserOpHash
 
 	if sim, simErr := v09reverts.NewExecutionResult(outErr); simErr == nil {
 		out.Result = sim
