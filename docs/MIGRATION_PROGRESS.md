@@ -187,6 +187,49 @@
 - [x] Block number validity
 - [x] Client & bundler integration
 
+### Days 22-24: Unit Testing
+
+**Approach**: Added focused getter tests for every UserOperation version (raising each from ~60–75% to ~87–90%), pure-helper tests in `pkg/gas`, and DB / codehash / standalone-helper tests in `pkg/modules/checks`. Version detection (EntryPoint-address lookup + field-fallback), EIP-7702 flow, paymaster signature flow, and block-number validity were all already covered in earlier days but are now exercised end-to-end by the new tests.
+
+- [x] Write tests for new UserOperation struct (v06=89.7%, v07=88.2%, v08=87.2%, v09=88.8%, root userop=87.1%)
+- [x] Write tests for version detection system (`DetectVersion`, `DetectVersionFromEntryPoint`, `IsVersionSupported`, `NewUserOperation` for each version)
+- [x] Write tests for new gas calculations (`readBigStr`, `createOp` v06/v07/unsupported, `retryEstimateGas`, `NewDefaultOverheadV07/V08/V09`, `CalcUnusedGasPenalty` threshold behaviour)
+- [x] Write tests for new validation rules (db.go round-trip + remove; codehash get/diff; `ValidateEIP7702AuthStandalone` nil-auth + bad-auth)
+- [x] Write tests for EIP-7702 flow (existing 14 auth tests + new standalone wrapper tests)
+- [x] Write tests for paymaster signature flow (v0.9 hash excludes paymasterSignature; payg `buildResponse` v0.6/v0.7/v0.9 branches; `convertOp`, `signOp`, `isV09`)
+- [x] Write tests for block number validity (17 tests in `validity_test.go` from Days 18-19)
+- [x] Update existing tests for new struct (v06/v07/v08/v09 getter coverage; convert.go nil + out-of-range checks; receipt-converter nil-inner + direct field copy)
+- [x] `go build ./...`, `go vet ./...`, `go test -count=1 ./...` all pass
+
+**Coverage summary** (target ≥80% on tested packages; ones marked * are RPC-dependent and inherently constrained):
+
+| Package | Coverage |
+|---|---|
+| `pkg/userop` | 87.1% |
+| `pkg/userop/v06` | 89.7% |
+| `pkg/userop/v07` | 88.2% |
+| `pkg/userop/v08` | 87.2% |
+| `pkg/userop/v09` | 88.8% |
+| `pkg/bundler` | 78.4% |
+| `pkg/client` | 71.7% |
+| `pkg/modules/relay` | 81.4% |
+| `pkg/modules/builder` | 75.0% |
+| `pkg/modules/expire` | 90.0% |
+| `pkg/handlers/payg` | 70.6% |
+| `pkg/mempool` | 84.7% |
+| `pkg/state` | 90.0% |
+| `pkg/tracer` | 92.5% |
+| `pkg/entrypoint/v07/methods` | 100.0% |
+| `pkg/entrypoint/v08/methods` | 100.0% |
+| `pkg/entrypoint/v09/methods` | 100.0% |
+| `pkg/entrypoint/v07/reverts` | 78.0% |
+| `pkg/entrypoint/v08/reverts` | 78.0% |
+| `pkg/entrypoint/v09/reverts` | 78.0% |
+| `pkg/gas` * | 37.8% (non-RPC helpers ~100%; `EstimateGas` and PVG-with-eth-client paths require live RPC) |
+| `pkg/modules/checks` * | 66.0% (non-RPC validation ~88–96%; `simulate.go`, `standalone.go` wiring functions require live RPC) |
+
+**Deliverable**: All unit tests pass
+
 ## Week 4: Testing & Polish (Days 22-30)
 
 - [x] Unit tests (>70% coverage for new code)

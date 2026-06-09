@@ -357,18 +357,15 @@
 **Deliverable**: All unit tests pass
 
 #### Days 25-27: E2E Testing
-- [ ] Update E2E test suite:
-  - Deploy v0.9 EntryPoint locally
-  - Update test contracts to v0.9
-  - Update test transactions for new struct
-- [ ] Test on Ethereum (local):
+- [ ] E2E test suite:
+  - Fork mainnet
+- [ ] Test on Ethereum Mainnet Fork:
   - `eth_sendUserOperation`
   - `eth_estimateUserOperationGas`
   - `eth_getUserOperationReceipt`
   - EIP-7702 flow
   - Paymaster signature flow
-- [ ] Test on Arbitrum Sepolia:
-  - Deploy test contracts
+- [ ] Test on Arbitrum One Mainnet Fork:
   - Test with Arbitrum gas calculations
   - Verify L2-specific behavior
 - [ ] Fix E2E test failures
@@ -387,6 +384,8 @@
 - [ ] Update CI workflows:
   - `.github/workflows/compliance.yml`
   - `.github/workflows/e2e.yml`
+  - Use v0.7 contracts and EntryPoint
+  - Use v0.8 contracts and EntryPoint
   - Use v0.9 contracts and EntryPoint
 
 **Deliverable**: Compliance tests pass
@@ -530,7 +529,7 @@ if version == "auto":
 - Arbitrum uses same v0.9 EntryPoint (singleton via CREATE2)
 - PVG buffer factor remains 16x for Arbitrum
 - Update `pkg/arbitrum/` gas calculations for v0.9 struct size
-- Test on Arbitrum Sepolia (chain ID: 421614)
+- Test on Arbitrum One mainnet fork (chain ID: 42161)
 
 ### Known Issues
 - Arbitrum `debug_traceCall` may have different behavior
@@ -569,7 +568,7 @@ if version == "auto":
 - [ ] Compiles successfully (`go build ./...`)
 - [ ] Unit tests pass (>80% coverage)
 - [ ] E2E tests pass on Ethereum
-- [ ] E2E tests pass on Arbitrum Sepolia
+- [ ] E2E tests pass on Arbitrum One
 - [ ] Compliance tests pass (bundler-spec-tests v0.9)
 - [ ] Version detection works correctly
 - [ ] Backward compatibility works (v0.6 mode)
@@ -586,7 +585,7 @@ if version == "auto":
 
 - [x] v0.9 EntryPoint ABI (from account-abstraction repo)
 - [ ] Local test node (Geth with v0.9)
-- [ ] Arbitrum Sepolia testnet access
+- [ ] Arbitrum One mainnet RPC access (forked locally for tests)
 - [ ] Reference bundler for comparison testing
 - [ ] v0.9 test contracts (SimpleAccount, Simple7702Account)
 
