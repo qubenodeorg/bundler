@@ -52,9 +52,11 @@ func (r *RpcAdapter) Eth_getUserOperationReceipt(
 }
 
 // Eth_getUserOperationByHash routes method calls to *Client.GetUserOperationByHash.
+// The returned UserOperation field preserves per-version JSON shape (initCode for v0.6,
+// factory/factoryData for v0.7+, etc.).
 func (r *RpcAdapter) Eth_getUserOperationByHash(
 	userOpHash string,
-) (*filter.HashLookupResult, error) {
+) (*HashLookupResult, error) {
 	return r.client.GetUserOperationByHash(userOpHash)
 }
 

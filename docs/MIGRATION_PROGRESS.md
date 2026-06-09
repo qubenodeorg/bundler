@@ -151,11 +151,41 @@
   - `handler_test.go` (payg): 3 new tests
   - `tracer_test.go` (v09 execution): 2 new tests (getCurrentUserOpHash)
 
+### Days 20-21: Client & Bundler Integration
+
+**Approach**: Use packed v0.6 struct as canonical mempool format. Version-aware ops are converted at the client boundary via `ConvertToV06Packed()` (preserves real paymaster gas limits, unlike `gas.ConvertToV06`). Mempool/batch/transaction packages all continue to operate on this single shape, with relay/builder dispatching to per-version `EstimateHandleOpsGas`/`HandleOps` based on the EntryPoint address.
+
+- [x] Add `pkg/userop/convert.go` with `ConvertToV06Packed()` (preserves factory+factoryData → InitCode and paymaster+gasLimits+paymasterData → PaymasterAndData using on-chain PackedUserOperation layout)
+- [x] Update `pkg/client/client.go`:
+  - Version detection from EntryPoint address + request body fields
+  - `SendUserOperation`: parses versioned op, converts to packed v0.6 before mempool insertion
+  - `EstimateUserOperationGas`: passes versioned op + version into `getGasEstimate`, populates `PaymasterVerificationGasLimit`/`PaymasterPostOpGasLimit` for v0.7+
+  - `GetUserOperationReceipt` / `GetUserOperationByHash`: dispatched by `GetUserOpReceiptWithEthClient` and `GetUserOpByHashWithEthClient` to the correct version filter package
+  - `SponsorUserOperation`: hands versioned op directly to `payg.Handler`
+- [x] Update `pkg/client/utils.go`:
+  - `GetGasEstimateFunc` takes `userop.UserOperationInterface` + `userop.Version`
+  - `HashLookupResult.UserOperation` is `map[string]any` to preserve per-version field naming in the JSON response (initCode for v0.6, factory/factoryData for v0.7+, etc.)
+- [x] Update `pkg/handlers/payg/handler.go`:
+  - Uses `ConvertToV06Packed()` (real paymaster gas limits) instead of `gas.ConvertToV06()` (dummy zero gas limits)
+  - Factored into `convertOp`, `signOp`, `buildResponse`, `isV09` helpers
+- [x] Update `pkg/modules/relay/relayer.go` and `pkg/modules/builder/client.go`:
+  - Detect version from `ctx.EntryPoint`
+  - Route to `pkg/entrypoint/transaction` (v0.6), `pkg/entrypoint/v07/transaction`, `v08/transaction`, or `v09/transaction`
+- [x] Tests added: `convert_test.go`, `bundler_test.go`, `client_test.go`, `utils_test.go`, `rpc_test.go`, `relayer_test.go`, expanded `handler_test.go`
+- [x] `go build ./...`, `go vet ./...`, `go test -count=1 ./...` all pass
+- [x] Coverage targets met:
+  - `pkg/client`: 71.3% (from 0.0%)
+  - `pkg/bundler`: 78.4% (from 0.0%)
+  - `pkg/modules/relay`: 82.6% (from 0.0%)
+  - `pkg/modules/builder`: 71.2% (maintained)
+  - `pkg/handlers/payg`: 70.6% (from 0.0%)
+  - `pkg/userop`: 58.1% (extended with convert.go)
+
 ## Week 3: Features & Integration (Days 18-21)
 
 - [x] Paymaster signature flow
 - [x] Block number validity
-- [ ] Client & bundler integration
+- [x] Client & bundler integration
 
 ## Week 4: Testing & Polish (Days 22-30)
 

@@ -131,6 +131,32 @@ func (i *Client) SetGetStakeFunc(fn stake.GetStakeFunc) {
 	i.getStakeFunc = fn
 }
 
+// parseVersionedUserOp parses the given map into the version-appropriate UserOperation,
+// using the EntryPoint address as the authoritative version source and falling back to
+// field-based detection on the request map.
+func parseVersionedUserOp(op map[string]any, ep common.Address) (userop.UserOperationInterface, userop.Version, error) {
+	version := userop.DetectVersionFromEntryPoint(ep)
+	if version == userop.V0_6 {
+		// Override v0.6 default if the request body clearly indicates a newer version.
+		if fieldVersion := userop.DetectVersion(op); fieldVersion != userop.V0_6 {
+			version = fieldVersion
+		}
+	}
+
+	if version == userop.V0_6 {
+		v06op, err := userop.New(op)
+		if err != nil {
+			return nil, version, err
+		}
+		return v06op, version, nil
+	}
+	vop, err := userop.NewUserOperation(version, op)
+	if err != nil {
+		return nil, version, err
+	}
+	return vop.Op, version, nil
+}
+
 // SendUserOperation implements the method call for eth_sendUserOperation.
 // It returns true if userOp was accepted otherwise returns an error.
 func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error) {
@@ -147,11 +173,12 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		WithValues("entrypoint", epAddr.String()).
 		WithValues("chain_id", i.chainID.String())
 
-	userOp, err := userop.New(op)
+	userOp, version, err := parseVersionedUserOp(op, epAddr)
 	if err != nil {
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
+	l = l.WithValues("version", string(version))
 
 	hash := userOp.GetUserOpHash(epAddr, i.chainID)
 	l = l.WithValues("userop_hash", hash)
@@ -173,8 +200,15 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		return "", err
 	}
 
-	// Add userOp to mempool.
-	if err := i.mempool.AddOp(epAddr, ctx.UserOp.(*userop.UserOperation)); err != nil {
+	// Convert to canonical packed v0.6 format before adding to the mempool. The mempool, batch
+	// pipeline, and existing v07/v08/v09 transaction packages all operate on this single shape.
+	packedOp, err := userop.ConvertToV06Packed(ctx.UserOp)
+	if err != nil {
+		l.Error(err, "eth_sendUserOperation error")
+		return "", err
+	}
+
+	if err := i.mempool.AddOp(epAddr, packedOp); err != nil {
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}
@@ -205,11 +239,13 @@ func (i *Client) EstimateUserOperationGas(
 		WithValues("entrypoint", epAddr.String()).
 		WithValues("chain_id", i.chainID.String())
 
-	userOp, err := userop.New(op)
+	userOp, version, err := parseVersionedUserOp(op, epAddr)
 	if err != nil {
 		l.Error(err, "eth_estimateUserOperationGas error")
 		return nil, err
 	}
+	l = l.WithValues("version", string(version))
+
 	hash := userOp.GetUserOpHash(epAddr, i.chainID)
 	l = l.WithValues("userop_hash", hash)
 
@@ -223,18 +259,21 @@ func (i *Client) EstimateUserOperationGas(
 	// Override op with suggested gas prices if maxFeePerGas is 0. This allows for more reliable gas
 	// estimations upstream. The default balance override also ensures simulations won't revert on
 	// insufficient funds.
-	if userOp.MaxFeePerGas.Cmp(common.Big0) != 1 {
+	if userOp.GetMaxFeePerGas().Cmp(common.Big0) != 1 {
 		gp, err := i.getGasPrices()
 		if err != nil {
 			l.Error(err, "eth_estimateUserOperationGas error")
 			return nil, err
 		}
-		userOp.MaxFeePerGas = gp.MaxFeePerGas
-		userOp.MaxPriorityFeePerGas = gp.MaxPriorityFeePerGas
+		userOp, err = setGasPrices(userOp, version, gp.MaxFeePerGas, gp.MaxPriorityFeePerGas)
+		if err != nil {
+			l.Error(err, "eth_estimateUserOperationGas error")
+			return nil, err
+		}
 	}
 
 	// Estimate gas limits
-	vg, cg, err := i.getGasEstimate(epAddr, userOp, sos)
+	vg, cg, err := i.getGasEstimate(epAddr, userOp, version, sos)
 	if err != nil {
 		l.Error(err, "eth_estimateUserOperationGas error")
 		return nil, err
@@ -247,48 +286,87 @@ func (i *Client) EstimateUserOperationGas(
 		return nil, err
 	}
 
-	l.Info("eth_estimateUserOperationGas ok")
-	return &gas.GasEstimates{
+	res := &gas.GasEstimates{
 		PreVerificationGas:   pvg,
 		VerificationGasLimit: big.NewInt(int64(vg)),
 		CallGasLimit:         big.NewInt(int64(cg)),
 
 		// TODO: Deprecate in v0.7
 		VerificationGas: big.NewInt(int64(vg)),
-	}, nil
+	}
+	if version != userop.V0_6 {
+		res.PaymasterVerificationGasLimit = userOp.GetPaymasterVerificationGasLimit()
+		res.PaymasterPostOpGasLimit = userOp.GetPaymasterPostOpGasLimit()
+	}
+
+	l.Info("eth_estimateUserOperationGas ok")
+	return res, nil
+}
+
+// setGasPrices returns a new versioned userOp with the given maxFeePerGas/maxPriorityFeePerGas applied.
+// This is used during gas estimation to overlay suggested gas prices onto the user-provided op.
+func setGasPrices(op userop.UserOperationInterface, version userop.Version, maxFee, maxPrio *big.Int) (userop.UserOperationInterface, error) {
+	data, err := op.ToMap()
+	if err != nil {
+		return nil, err
+	}
+	data["maxFeePerGas"] = hexutil.EncodeBig(maxFee)
+	data["maxPriorityFeePerGas"] = hexutil.EncodeBig(maxPrio)
+
+	if version == userop.V0_6 {
+		return userop.New(data)
+	}
+	vop, err := userop.NewUserOperation(version, data)
+	if err != nil {
+		return nil, err
+	}
+	return vop.Op, nil
 }
 
 // GetUserOperationReceipt fetches a UserOperation receipt based on a userOpHash returned by
-// *Client.SendUserOperation.
+// *Client.SendUserOperation. Routing to the correct EntryPoint version is delegated to the
+// installed GetUserOpReceiptFunc.
 func (i *Client) GetUserOperationReceipt(
 	hash string,
 ) (*filter.UserOperationReceipt, error) {
 	// Init logger
 	l := i.logger.WithName("eth_getUserOperationReceipt").WithValues("userop_hash", hash)
 
-	ev, err := i.getUserOpReceipt(hash, i.supportedEntryPoints[0], i.opLookupLimit)
-	if err != nil {
-		l.Error(err, "eth_getUserOperationReceipt error")
-		return nil, err
+	// Try each supported EntryPoint until a receipt is found.
+	for _, ep := range i.supportedEntryPoints {
+		ev, err := i.getUserOpReceipt(hash, ep, i.opLookupLimit)
+		if err != nil {
+			l.Error(err, "eth_getUserOperationReceipt error")
+			return nil, err
+		}
+		if ev != nil {
+			l.Info("eth_getUserOperationReceipt ok")
+			return ev, nil
+		}
 	}
 
-	l.Info("eth_getUserOperationReceipt ok")
-	return ev, nil
+	return nil, nil
 }
 
 // GetUserOperationByHash returns a UserOperation based on a given userOpHash returned by
-// *Client.SendUserOperation.
-func (i *Client) GetUserOperationByHash(hash string) (*filter.HashLookupResult, error) {
+// *Client.SendUserOperation. Routing to the correct EntryPoint version is delegated to the
+// installed GetUserOpByHashFunc.
+func (i *Client) GetUserOperationByHash(hash string) (*HashLookupResult, error) {
 	// Init logger
 	l := i.logger.WithName("eth_getUserOperationByHash").WithValues("userop_hash", hash)
 
-	res, err := i.getUserOpByHash(hash, i.supportedEntryPoints[0], i.chainID, i.opLookupLimit)
-	if err != nil {
-		l.Error(err, "eth_getUserOperationByHash error")
-		return nil, err
+	for _, ep := range i.supportedEntryPoints {
+		res, err := i.getUserOpByHash(hash, ep, i.chainID, i.opLookupLimit)
+		if err != nil {
+			l.Error(err, "eth_getUserOperationByHash error")
+			return nil, err
+		}
+		if res != nil {
+			return res, nil
+		}
 	}
 
-	return res, nil
+	return nil, nil
 }
 
 // SupportedEntryPoints implements the method call for eth_supportedEntryPoints. It returns the array of
@@ -350,12 +428,13 @@ func (c *Client) SponsorUserOperation(
 		WithValues("paymasters", pmAddrs).
 		WithValues("chain_id", c.chainID.String())
 
-	userOp, err := userop.New(op)
+	userOp, version, err := parseVersionedUserOp(op, epAddr)
 	if err != nil {
 		err = fmt.Errorf("bad userOp: %s", err)
 		l.Error(err, "pm_sponsorUserOperation error")
 		return nil, err
 	}
+	l = l.WithValues("version", string(version))
 
 	ct, err := handlers.NewContextType(ctx)
 	if err != nil {

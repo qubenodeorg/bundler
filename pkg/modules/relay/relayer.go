@@ -9,9 +9,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-logr/logr"
+	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	"github.com/zarbanio/bundler/pkg/entrypoint/transaction"
+	v07txn "github.com/zarbanio/bundler/pkg/entrypoint/v07/transaction"
+	v08txn "github.com/zarbanio/bundler/pkg/entrypoint/v08/transaction"
+	v09txn "github.com/zarbanio/bundler/pkg/entrypoint/v09/transaction"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // Relayer provides a module that can relay batches with a regular EOA. Relaying batches to the EntryPoint
@@ -59,11 +64,110 @@ func (r *Relayer) SetWaitTimeout(timeout time.Duration) {
 	r.waitTimeout = timeout
 }
 
+// estimateHandleOpsGas dispatches to the version-appropriate EstimateHandleOpsGas implementation.
+func estimateHandleOpsGas(
+	version userop.Version,
+	opts *transaction.Opts,
+) (uint64, *reverts.FailedOpRevert, error) {
+	switch version {
+	case userop.V0_7:
+		return v07txn.EstimateHandleOpsGas(toV07Opts(opts))
+	case userop.V0_8:
+		return v08txn.EstimateHandleOpsGas(toV08Opts(opts))
+	case userop.V0_9:
+		return v09txn.EstimateHandleOpsGas(toV09Opts(opts))
+	default:
+		return transaction.EstimateHandleOpsGas(opts)
+	}
+}
+
+// handleOps dispatches to the version-appropriate HandleOps implementation.
+func handleOps(version userop.Version, opts *transaction.Opts) (txnHash string, err error) {
+	switch version {
+	case userop.V0_7:
+		txn, err := v07txn.HandleOps(toV07Opts(opts))
+		if err != nil {
+			return "", err
+		}
+		return txn.Hash().String(), nil
+	case userop.V0_8:
+		txn, err := v08txn.HandleOps(toV08Opts(opts))
+		if err != nil {
+			return "", err
+		}
+		return txn.Hash().String(), nil
+	case userop.V0_9:
+		txn, err := v09txn.HandleOps(toV09Opts(opts))
+		if err != nil {
+			return "", err
+		}
+		return txn.Hash().String(), nil
+	default:
+		txn, err := transaction.HandleOps(opts)
+		if err != nil {
+			return "", err
+		}
+		return txn.Hash().String(), nil
+	}
+}
+
+func toV07Opts(o *transaction.Opts) *v07txn.Opts {
+	return &v07txn.Opts{
+		EOA:         o.EOA,
+		Eth:         o.Eth,
+		ChainID:     o.ChainID,
+		EntryPoint:  o.EntryPoint,
+		Batch:       o.Batch,
+		Beneficiary: o.Beneficiary,
+		BaseFee:     o.BaseFee,
+		Tip:         o.Tip,
+		GasPrice:    o.GasPrice,
+		GasLimit:    o.GasLimit,
+		NoSend:      o.NoSend,
+		WaitTimeout: o.WaitTimeout,
+	}
+}
+
+func toV08Opts(o *transaction.Opts) *v08txn.Opts {
+	return &v08txn.Opts{
+		EOA:         o.EOA,
+		Eth:         o.Eth,
+		ChainID:     o.ChainID,
+		EntryPoint:  o.EntryPoint,
+		Batch:       o.Batch,
+		Beneficiary: o.Beneficiary,
+		BaseFee:     o.BaseFee,
+		Tip:         o.Tip,
+		GasPrice:    o.GasPrice,
+		GasLimit:    o.GasLimit,
+		NoSend:      o.NoSend,
+		WaitTimeout: o.WaitTimeout,
+	}
+}
+
+func toV09Opts(o *transaction.Opts) *v09txn.Opts {
+	return &v09txn.Opts{
+		EOA:         o.EOA,
+		Eth:         o.Eth,
+		ChainID:     o.ChainID,
+		EntryPoint:  o.EntryPoint,
+		Batch:       o.Batch,
+		Beneficiary: o.Beneficiary,
+		BaseFee:     o.BaseFee,
+		Tip:         o.Tip,
+		GasPrice:    o.GasPrice,
+		GasLimit:    o.GasLimit,
+		NoSend:      o.NoSend,
+		WaitTimeout: o.WaitTimeout,
+	}
+}
+
 // SendUserOperation returns a BatchHandler that is used by the Bundler to send batches in a regular EOA
 // transaction.
 func (r *Relayer) SendUserOperation() modules.BatchHandlerFunc {
 	return func(ctx *modules.BatchHandlerCtx) error {
-		opts := transaction.Opts{
+		version := userop.DetectVersionFromEntryPoint(ctx.EntryPoint)
+		opts := &transaction.Opts{
 			EOA:         r.eoa,
 			Eth:         r.eth,
 			ChainID:     ctx.ChainID,
@@ -78,12 +182,13 @@ func (r *Relayer) SendUserOperation() modules.BatchHandlerFunc {
 		}
 		// Estimate gas for handleOps() and drop all userOps that cause unexpected reverts.
 		for len(ctx.Batch) > 0 {
-			est, revert, err := transaction.EstimateHandleOpsGas(&opts)
+			est, revert, err := estimateHandleOpsGas(version, opts)
 
 			if err != nil {
 				return err
 			} else if revert != nil {
 				ctx.MarkOpIndexForRemoval(revert.OpIndex, revert.Reason)
+				opts.Batch = ctx.Batch
 			} else {
 				opts.GasLimit = est
 				break
@@ -93,11 +198,12 @@ func (r *Relayer) SendUserOperation() modules.BatchHandlerFunc {
 		// Call handleOps() with gas estimate. Any userOps that cause a revert at this stage will be
 		// caught and dropped in the next iteration.
 		if len(ctx.Batch) > 0 {
-			if txn, err := transaction.HandleOps(&opts); err != nil {
+			opts.Batch = ctx.Batch
+			txnHash, err := handleOps(version, opts)
+			if err != nil {
 				return err
-			} else {
-				ctx.Data["txn_hash"] = txn.Hash().String()
 			}
+			ctx.Data["txn_hash"] = txnHash
 		}
 
 		return nil
