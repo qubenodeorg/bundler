@@ -357,18 +357,15 @@
 **Deliverable**: All unit tests pass
 
 #### Days 25-27: E2E Testing
-- [ ] Update E2E test suite:
-  - Deploy v0.9 EntryPoint locally
-  - Update test contracts to v0.9
-  - Update test transactions for new struct
-- [ ] Test on Ethereum (local):
+- [ ] E2E test suite:
+  - Fork mainnet
+- [ ] Test on Ethereum Mainnet Fork:
   - `eth_sendUserOperation`
   - `eth_estimateUserOperationGas`
   - `eth_getUserOperationReceipt`
   - EIP-7702 flow
   - Paymaster signature flow
-- [ ] Test on Arbitrum One:
-  - Deploy test contracts
+- [ ] Test on Arbitrum One Mainnet Fork:
   - Test with Arbitrum gas calculations
   - Verify L2-specific behavior
 - [ ] Fix E2E test failures
