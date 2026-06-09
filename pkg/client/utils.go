@@ -1,8 +1,8 @@
 package client
 
 import (
-	"encoding/json"
 	"math/big"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -60,39 +60,106 @@ func GetUserOpReceiptWithEthClient(eth *ethclient.Client) GetUserOpReceiptFunc {
 	}
 }
 
-// convertVxxReceipt converts version-specific receipts to the canonical v0.6 type by JSON round-trip.
-// All version receipt structs share the same JSON layout, so this is lossless.
+// convertVxxReceipt converts version-specific receipts to the canonical v0.6 type by direct
+// field copy. All version receipt structs share the same field set, so this is lossless and
+// avoids the cost of a json.Marshal/Unmarshal round-trip on what may be a hot path.
 func convertV07Receipt(r *v07filter.UserOperationReceipt) *filter.UserOperationReceipt {
 	if r == nil {
 		return nil
 	}
-	return reEncodeReceipt(r)
+	var inner *filter.ParsedTransaction
+	if r.Receipt != nil {
+		inner = &filter.ParsedTransaction{
+			BlockHash:         r.Receipt.BlockHash,
+			BlockNumber:       r.Receipt.BlockNumber,
+			From:              r.Receipt.From,
+			CumulativeGasUsed: r.Receipt.CumulativeGasUsed,
+			GasUsed:           r.Receipt.GasUsed,
+			Logs:              r.Receipt.Logs,
+			LogsBloom:         r.Receipt.LogsBloom,
+			TransactionHash:   r.Receipt.TransactionHash,
+			TransactionIndex:  r.Receipt.TransactionIndex,
+			EffectiveGasPrice: r.Receipt.EffectiveGasPrice,
+		}
+	}
+	return &filter.UserOperationReceipt{
+		UserOpHash:    r.UserOpHash,
+		Sender:        r.Sender,
+		Paymaster:     r.Paymaster,
+		Nonce:         r.Nonce,
+		Success:       r.Success,
+		ActualGasCost: r.ActualGasCost,
+		ActualGasUsed: r.ActualGasUsed,
+		From:          r.From,
+		Receipt:       inner,
+		Logs:          r.Logs,
+	}
 }
 
 func convertV08Receipt(r *v08filter.UserOperationReceipt) *filter.UserOperationReceipt {
 	if r == nil {
 		return nil
 	}
-	return reEncodeReceipt(r)
+	var inner *filter.ParsedTransaction
+	if r.Receipt != nil {
+		inner = &filter.ParsedTransaction{
+			BlockHash:         r.Receipt.BlockHash,
+			BlockNumber:       r.Receipt.BlockNumber,
+			From:              r.Receipt.From,
+			CumulativeGasUsed: r.Receipt.CumulativeGasUsed,
+			GasUsed:           r.Receipt.GasUsed,
+			Logs:              r.Receipt.Logs,
+			LogsBloom:         r.Receipt.LogsBloom,
+			TransactionHash:   r.Receipt.TransactionHash,
+			TransactionIndex:  r.Receipt.TransactionIndex,
+			EffectiveGasPrice: r.Receipt.EffectiveGasPrice,
+		}
+	}
+	return &filter.UserOperationReceipt{
+		UserOpHash:    r.UserOpHash,
+		Sender:        r.Sender,
+		Paymaster:     r.Paymaster,
+		Nonce:         r.Nonce,
+		Success:       r.Success,
+		ActualGasCost: r.ActualGasCost,
+		ActualGasUsed: r.ActualGasUsed,
+		From:          r.From,
+		Receipt:       inner,
+		Logs:          r.Logs,
+	}
 }
 
 func convertV09Receipt(r *v09filter.UserOperationReceipt) *filter.UserOperationReceipt {
 	if r == nil {
 		return nil
 	}
-	return reEncodeReceipt(r)
-}
-
-func reEncodeReceipt(in any) *filter.UserOperationReceipt {
-	b, err := json.Marshal(in)
-	if err != nil {
-		return nil
+	var inner *filter.ParsedTransaction
+	if r.Receipt != nil {
+		inner = &filter.ParsedTransaction{
+			BlockHash:         r.Receipt.BlockHash,
+			BlockNumber:       r.Receipt.BlockNumber,
+			From:              r.Receipt.From,
+			CumulativeGasUsed: r.Receipt.CumulativeGasUsed,
+			GasUsed:           r.Receipt.GasUsed,
+			Logs:              r.Receipt.Logs,
+			LogsBloom:         r.Receipt.LogsBloom,
+			TransactionHash:   r.Receipt.TransactionHash,
+			TransactionIndex:  r.Receipt.TransactionIndex,
+			EffectiveGasPrice: r.Receipt.EffectiveGasPrice,
+		}
 	}
-	var out filter.UserOperationReceipt
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil
+	return &filter.UserOperationReceipt{
+		UserOpHash:    r.UserOpHash,
+		Sender:        r.Sender,
+		Paymaster:     r.Paymaster,
+		Nonce:         r.Nonce,
+		Success:       r.Success,
+		ActualGasCost: r.ActualGasCost,
+		ActualGasUsed: r.ActualGasUsed,
+		From:          r.From,
+		Receipt:       inner,
+		Logs:          r.Logs,
 	}
-	return &out
 }
 
 // GetGasPricesFunc is a general interface for fetching values for maxFeePerGas and maxPriorityFeePerGas.
@@ -176,7 +243,8 @@ func getUserOpByHashNoop() GetUserOpByHashFunc {
 }
 
 // GetUserOpByHashWithEthClient returns an implementation of GetUserOpByHashFunc that routes
-// to the correct version-specific filter package based on the EntryPoint address.
+// to the correct version-specific filter package based on the EntryPoint address. A nil
+// inner UserOperation yields a result with a nil UserOperation map rather than panicking.
 func GetUserOpByHashWithEthClient(eth *ethclient.Client) GetUserOpByHashFunc {
 	return func(hash string, ep common.Address, chain *big.Int, blkRange uint64) (*HashLookupResult, error) {
 		switch userop.DetectVersionFromEntryPoint(ep) {
@@ -185,7 +253,7 @@ func GetUserOpByHashWithEthClient(eth *ethclient.Client) GetUserOpByHashFunc {
 			if err != nil || res == nil {
 				return nil, err
 			}
-			opMap, err := res.UserOperation.ToMap()
+			opMap, err := opToMap(res.UserOperation)
 			if err != nil {
 				return nil, err
 			}
@@ -201,7 +269,7 @@ func GetUserOpByHashWithEthClient(eth *ethclient.Client) GetUserOpByHashFunc {
 			if err != nil || res == nil {
 				return nil, err
 			}
-			opMap, err := res.UserOperation.ToMap()
+			opMap, err := opToMap(res.UserOperation)
 			if err != nil {
 				return nil, err
 			}
@@ -217,7 +285,7 @@ func GetUserOpByHashWithEthClient(eth *ethclient.Client) GetUserOpByHashFunc {
 			if err != nil || res == nil {
 				return nil, err
 			}
-			opMap, err := res.UserOperation.ToMap()
+			opMap, err := opToMap(res.UserOperation)
 			if err != nil {
 				return nil, err
 			}
@@ -233,7 +301,7 @@ func GetUserOpByHashWithEthClient(eth *ethclient.Client) GetUserOpByHashFunc {
 			if err != nil || res == nil {
 				return nil, err
 			}
-			opMap, err := res.UserOperation.ToMap()
+			opMap, err := opToMap(res.UserOperation)
 			if err != nil {
 				return nil, err
 			}
@@ -246,4 +314,24 @@ func GetUserOpByHashWithEthClient(eth *ethclient.Client) GetUserOpByHashFunc {
 			}, nil
 		}
 	}
+}
+
+// opToMap converts a typed UserOperation pointer to a map[string]any while safely handling
+// a typed-nil pointer (returns nil map without invoking the ToMap value receiver). Generics
+// keep the type-specific nil check ergonomic for each version.
+func opToMap[T interface{ ToMap() (map[string]any, error) }](op T) (map[string]any, error) {
+	if any(op) == nil || isTypedNil(op) {
+		return nil, nil
+	}
+	return op.ToMap()
+}
+
+// isTypedNil reports whether the value is a typed nil pointer wrapped in an interface.
+// Using reflect here avoids any direct nil pointer dereference on ToMap.
+func isTypedNil(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	return rv.Kind() == reflect.Ptr && rv.IsNil()
 }

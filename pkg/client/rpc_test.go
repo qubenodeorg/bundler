@@ -19,7 +19,10 @@ func newRpcAdapter(t *testing.T) *RpcAdapter {
 		"eth_getBlockByNumber": testutils.NewBlockMock(),
 	})
 	t.Cleanup(n.Close)
-	r, _ := rpc.Dial(n.URL)
+	r, err := rpc.Dial(n.URL)
+	if err != nil {
+		t.Fatalf("rpc.Dial: %v", err)
+	}
 	eth := ethclient.NewClient(r)
 
 	db := testutils.DBMock()
@@ -94,7 +97,10 @@ func TestRpcAdapter_DebugDisabled(t *testing.T) {
 	c, _ := newTestClient(t)
 	n := testutils.RpcMock(testutils.MethodMocks{})
 	defer n.Close()
-	r, _ := rpc.Dial(n.URL)
+	r, err := rpc.Dial(n.URL)
+	if err != nil {
+		t.Fatalf("rpc.Dial: %v", err)
+	}
 	ra := NewRpcAdapter(c, nil, r)
 	if _, err := ra.Debug_bundler_clearState(); err == nil {
 		t.Fatal("expected disabled error")

@@ -76,6 +76,9 @@ func TestRelayer_SendUserOperation_V07Routing(t *testing.T) {
 	if err := r.SendUserOperation()(ctx); err != nil {
 		t.Fatalf("relayer SendUserOperation v0.7: %v", err)
 	}
+	if ctx.Data["txn_hash"] == nil {
+		t.Fatalf("expected txn_hash to be set for v0.7")
+	}
 }
 
 func TestRelayer_SendUserOperation_V08Routing(t *testing.T) {
@@ -97,6 +100,9 @@ func TestRelayer_SendUserOperation_V08Routing(t *testing.T) {
 	if err := r.SendUserOperation()(ctx); err != nil {
 		t.Fatalf("relayer SendUserOperation v0.8: %v", err)
 	}
+	if ctx.Data["txn_hash"] == nil {
+		t.Fatalf("expected txn_hash to be set for v0.8")
+	}
 }
 
 func TestRelayer_SendUserOperation_V09Routing(t *testing.T) {
@@ -117,6 +123,9 @@ func TestRelayer_SendUserOperation_V09Routing(t *testing.T) {
 	)
 	if err := r.SendUserOperation()(ctx); err != nil {
 		t.Fatalf("relayer SendUserOperation v0.9: %v", err)
+	}
+	if ctx.Data["txn_hash"] == nil {
+		t.Fatalf("expected txn_hash to be set for v0.9")
 	}
 }
 

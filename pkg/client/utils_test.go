@@ -11,6 +11,7 @@ import (
 	v07filter "github.com/zarbanio/bundler/pkg/entrypoint/v07/filter"
 	v08filter "github.com/zarbanio/bundler/pkg/entrypoint/v08/filter"
 	v09filter "github.com/zarbanio/bundler/pkg/entrypoint/v09/filter"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 func TestConvertVxReceipt_Nil(t *testing.T) {
@@ -22,6 +23,38 @@ func TestConvertVxReceipt_Nil(t *testing.T) {
 	}
 	if convertV09Receipt(nil) != nil {
 		t.Fatal("expected nil for nil input")
+	}
+}
+
+func TestConvertVxReceipt_NilInnerReceipt(t *testing.T) {
+	// Inner Receipt is nil — converter must not panic.
+	in := &v07filter.UserOperationReceipt{Sender: testutils.ValidAddress1, Nonce: "0x1"}
+	out := convertV07Receipt(in)
+	if out == nil || out.Receipt != nil {
+		t.Fatalf("expected non-nil outer with nil inner receipt, got %+v", out)
+	}
+}
+
+func TestOpToMap_TypedNil(t *testing.T) {
+	// A typed-nil *userop.UserOperation wrapped in the generic constraint must not panic.
+	var typedNil *filter.UserOperationReceipt = nil
+	_ = typedNil // sanity reference
+	// We test the actual generic helper via a stub that satisfies the constraint.
+	if _, err := opToMap[*userop.UserOperation](nil); err != nil {
+		t.Fatalf("opToMap on typed nil should not error: %v", err)
+	}
+}
+
+func TestIsTypedNil(t *testing.T) {
+	if !isTypedNil(nil) {
+		t.Fatal("expected untyped nil to be considered nil")
+	}
+	var p *userop.UserOperation
+	if !isTypedNil(p) {
+		t.Fatal("expected typed nil pointer to be considered nil")
+	}
+	if isTypedNil(&userop.UserOperation{}) {
+		t.Fatal("expected non-nil pointer to not be considered nil")
 	}
 }
 
@@ -96,7 +129,10 @@ func TestGetUserOpReceiptWithEthClient_InvalidHash(t *testing.T) {
 	// which should surface a "Missing/invalid userOpHash" error from each filter package.
 	n := testutils.RpcMock(testutils.MethodMocks{})
 	defer n.Close()
-	r, _ := rpc.Dial(n.URL)
+	r, err := rpc.Dial(n.URL)
+	if err != nil {
+		t.Fatalf("rpc.Dial: %v", err)
+	}
 	eth := ethclient.NewClient(r)
 	fn := GetUserOpReceiptWithEthClient(eth)
 
@@ -115,7 +151,10 @@ func TestGetUserOpReceiptWithEthClient_InvalidHash(t *testing.T) {
 func TestGetUserOpByHashWithEthClient_InvalidHash(t *testing.T) {
 	n := testutils.RpcMock(testutils.MethodMocks{})
 	defer n.Close()
-	r, _ := rpc.Dial(n.URL)
+	r, err := rpc.Dial(n.URL)
+	if err != nil {
+		t.Fatalf("rpc.Dial: %v", err)
+	}
 	eth := ethclient.NewClient(r)
 	fn := GetUserOpByHashWithEthClient(eth)
 
@@ -134,7 +173,10 @@ func TestGetUserOpByHashWithEthClient_InvalidHash(t *testing.T) {
 func TestGetGasEstimateWithEthClient_ConstructsFn(t *testing.T) {
 	n := testutils.RpcMock(testutils.MethodMocks{})
 	defer n.Close()
-	r, _ := rpc.Dial(n.URL)
+	r, err := rpc.Dial(n.URL)
+	if err != nil {
+		t.Fatalf("rpc.Dial: %v", err)
+	}
 	fn := GetGasEstimateWithEthClient(r, nil, testutils.ChainID, nil, "callTracer")
 	if fn == nil {
 		t.Fatal("expected non-nil GetGasEstimateFunc")
@@ -144,7 +186,10 @@ func TestGetGasEstimateWithEthClient_ConstructsFn(t *testing.T) {
 func TestGetGasPricesWithEthClient_ConstructsFn(t *testing.T) {
 	n := testutils.RpcMock(testutils.MethodMocks{})
 	defer n.Close()
-	r, _ := rpc.Dial(n.URL)
+	r, err := rpc.Dial(n.URL)
+	if err != nil {
+		t.Fatalf("rpc.Dial: %v", err)
+	}
 	eth := ethclient.NewClient(r)
 	fn := GetGasPricesWithEthClient(eth)
 	if fn == nil {

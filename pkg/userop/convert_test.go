@@ -31,6 +31,36 @@ func sampleV07() *v07.UserOperation {
 	}
 }
 
+func TestConvertToV06Packed_NilInputReturnsError(t *testing.T) {
+	if _, err := ConvertToV06Packed(nil); err == nil {
+		t.Fatal("expected error for nil input")
+	}
+}
+
+func TestConvertToV06Packed_RejectsOutOfRangePaymasterGas(t *testing.T) {
+	// Build a value larger than uint128 max.
+	over := new(big.Int).Lsh(big.NewInt(1), 128)
+	op := sampleV07()
+	op.PaymasterVerificationGasLimit = over
+	if _, err := ConvertToV06Packed(op); err == nil {
+		t.Fatal("expected error for paymasterVerificationGasLimit > uint128 max")
+	}
+
+	op = sampleV07()
+	op.PaymasterPostOpGasLimit = over
+	if _, err := ConvertToV06Packed(op); err == nil {
+		t.Fatal("expected error for paymasterPostOpGasLimit > uint128 max")
+	}
+}
+
+func TestConvertToV06Packed_RejectsNegativePaymasterGas(t *testing.T) {
+	op := sampleV07()
+	op.PaymasterVerificationGasLimit = big.NewInt(-1)
+	if _, err := ConvertToV06Packed(op); err == nil {
+		t.Fatal("expected error for negative paymasterVerificationGasLimit")
+	}
+}
+
 func TestConvertToV06Packed_V06Passthrough(t *testing.T) {
 	in := &UserOperation{
 		Sender:               common.HexToAddress("0xaa"),

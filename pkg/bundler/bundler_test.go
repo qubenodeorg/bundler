@@ -84,8 +84,12 @@ func TestBundler_Process_PendingRemoval(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 	op2 := testutils.MockValidInitUserOp()
 	op2.Nonce = big.NewInt(1)
-	_ = mem.AddOp(ep, op)
-	_ = mem.AddOp(ep, op2)
+	if err := mem.AddOp(ep, op); err != nil {
+		t.Fatalf("AddOp: %v", err)
+	}
+	if err := mem.AddOp(ep, op2); err != nil {
+		t.Fatalf("AddOp: %v", err)
+	}
 
 	b.UseModules(func(ctx *modules.BatchHandlerCtx) error {
 		ctx.MarkOpIndexForRemoval(0, "bad op")
@@ -107,7 +111,9 @@ func TestBundler_Process_PendingRemoval(t *testing.T) {
 func TestBundler_Process_BatchHandlerError(t *testing.T) {
 	b, mem, ep := newTestBundler(t)
 	op := testutils.MockValidInitUserOp()
-	_ = mem.AddOp(ep, op)
+	if err := mem.AddOp(ep, op); err != nil {
+		t.Fatalf("AddOp: %v", err)
+	}
 
 	wantErr := errors.New("boom")
 	b.UseModules(func(ctx *modules.BatchHandlerCtx) error {
@@ -127,7 +133,9 @@ func TestBundler_MaxBatchAdjusts(t *testing.T) {
 	for i := int64(0); i < 3; i++ {
 		op := testutils.MockValidInitUserOp()
 		op.Nonce = big.NewInt(i)
-		_ = mem.AddOp(ep, op)
+		if err := mem.AddOp(ep, op); err != nil {
+			t.Fatalf("AddOp: %v", err)
+		}
 	}
 
 	var seen int
@@ -146,7 +154,9 @@ func TestBundler_MaxBatchAdjusts(t *testing.T) {
 
 func TestBundler_GasPriceErrorsPropagate(t *testing.T) {
 	b, mem, ep := newTestBundler(t)
-	_ = mem.AddOp(ep, testutils.MockValidInitUserOp())
+	if err := mem.AddOp(ep, testutils.MockValidInitUserOp()); err != nil {
+		t.Fatalf("AddOp: %v", err)
+	}
 
 	wantErr := errors.New("basefee err")
 	b.SetGetBaseFeeFunc(func() (*big.Int, error) { return nil, wantErr })

@@ -166,12 +166,18 @@ func (b *BuilderClient) SendUserOperation() modules.BatchHandlerFunc {
 		}
 		// Estimate gas for handleOps() and drop all userOps that cause unexpected reverts.
 		for len(ctx.Batch) > 0 {
+			prevLen := len(ctx.Batch)
 			est, revert, err := estimateHandleOpsGas(version, opts)
 
 			if err != nil {
 				return err
 			} else if revert != nil {
 				ctx.MarkOpIndexForRemoval(revert.OpIndex, revert.Reason)
+				// MarkOpIndexForRemoval is a no-op for out-of-range indexes. Without this
+				// guard the loop would spin forever on repeated reverts.
+				if len(ctx.Batch) == prevLen {
+					return fmt.Errorf("builder: failed to remove reverted op at index %d (%s)", revert.OpIndex, revert.Reason)
+				}
 				opts.Batch = ctx.Batch
 			} else {
 				opts.GasLimit = est
@@ -203,6 +209,9 @@ func (b *BuilderClient) SendUserOperation() modules.BatchHandlerFunc {
 		txn, err := handleOps(version, opts)
 		if err != nil {
 			return err
+		}
+		if txn == nil {
+			return errors.New("builder: HandleOps returned nil transaction")
 		}
 
 		// Broadcast bundle to a list of ethereum block builders for all blocks up to a future block.

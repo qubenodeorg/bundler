@@ -145,6 +145,13 @@ func TestParseVersionedUserOp_BadData(t *testing.T) {
 	}
 }
 
+func TestParseVersionedUserOp_NilMapReturnsError(t *testing.T) {
+	_, _, err := parseVersionedUserOp(nil, common.HexToAddress(v06EP))
+	if err == nil {
+		t.Fatal("expected error for nil op map")
+	}
+}
+
 func TestClient_SendUserOperation_V06(t *testing.T) {
 	c, mem := newTestClient(t)
 	hash, err := c.SendUserOperation(testutils.MockUserOpData, v06EP)
@@ -267,6 +274,40 @@ func TestClient_GetUserOperationReceipt_FoundViaSetter(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+func TestClient_GetUserOperationReceipt_FallsThroughEntryPoints(t *testing.T) {
+	c, _ := newTestClient(t, common.HexToAddress(v06EP), common.HexToAddress(v07EP))
+	want := &filter.UserOperationReceipt{Sender: testutils.ValidAddress1}
+	calls := 0
+	c.SetGetUserOpReceiptFunc(func(hash string, ep common.Address, blkRange uint64) (*filter.UserOperationReceipt, error) {
+		calls++
+		if calls == 1 {
+			return nil, nil
+		}
+		return want, nil
+	})
+	got, err := c.GetUserOperationReceipt(testutils.MockHash)
+	if err != nil || got != want || calls != 2 {
+		t.Fatalf("fallback: got=%v err=%v calls=%d", got, err, calls)
+	}
+}
+
+func TestClient_GetUserOperationByHash_FallsThroughEntryPoints(t *testing.T) {
+	c, _ := newTestClient(t, common.HexToAddress(v06EP), common.HexToAddress(v07EP))
+	want := &HashLookupResult{EntryPoint: v07EP}
+	calls := 0
+	c.SetGetUserOpByHashFunc(func(hash string, ep common.Address, chain *big.Int, blkRange uint64) (*HashLookupResult, error) {
+		calls++
+		if calls == 1 {
+			return nil, nil
+		}
+		return want, nil
+	})
+	got, err := c.GetUserOperationByHash(testutils.MockHash)
+	if err != nil || got != want || calls != 2 {
+		t.Fatalf("fallback: got=%v err=%v calls=%d", got, err, calls)
 	}
 }
 

@@ -3,10 +3,12 @@
 package relay
 
 import (
+	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-logr/logr"
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
@@ -81,34 +83,28 @@ func estimateHandleOpsGas(
 	}
 }
 
-// handleOps dispatches to the version-appropriate HandleOps implementation.
+// handleOps dispatches to the version-appropriate HandleOps implementation. Returns an
+// empty hash with no error if the underlying call returned a nil transaction without
+// an error (which can happen in NoSend mode).
 func handleOps(version userop.Version, opts *transaction.Opts) (txnHash string, err error) {
+	var txn *types.Transaction
 	switch version {
 	case userop.V0_7:
-		txn, err := v07txn.HandleOps(toV07Opts(opts))
-		if err != nil {
-			return "", err
-		}
-		return txn.Hash().String(), nil
+		txn, err = v07txn.HandleOps(toV07Opts(opts))
 	case userop.V0_8:
-		txn, err := v08txn.HandleOps(toV08Opts(opts))
-		if err != nil {
-			return "", err
-		}
-		return txn.Hash().String(), nil
+		txn, err = v08txn.HandleOps(toV08Opts(opts))
 	case userop.V0_9:
-		txn, err := v09txn.HandleOps(toV09Opts(opts))
-		if err != nil {
-			return "", err
-		}
-		return txn.Hash().String(), nil
+		txn, err = v09txn.HandleOps(toV09Opts(opts))
 	default:
-		txn, err := transaction.HandleOps(opts)
-		if err != nil {
-			return "", err
-		}
-		return txn.Hash().String(), nil
+		txn, err = transaction.HandleOps(opts)
 	}
+	if err != nil {
+		return "", err
+	}
+	if txn == nil {
+		return "", nil
+	}
+	return txn.Hash().String(), nil
 }
 
 func toV07Opts(o *transaction.Opts) *v07txn.Opts {
@@ -182,12 +178,18 @@ func (r *Relayer) SendUserOperation() modules.BatchHandlerFunc {
 		}
 		// Estimate gas for handleOps() and drop all userOps that cause unexpected reverts.
 		for len(ctx.Batch) > 0 {
+			prevLen := len(ctx.Batch)
 			est, revert, err := estimateHandleOpsGas(version, opts)
 
 			if err != nil {
 				return err
 			} else if revert != nil {
 				ctx.MarkOpIndexForRemoval(revert.OpIndex, revert.Reason)
+				// MarkOpIndexForRemoval is a no-op for out-of-range indexes. Without this
+				// guard the loop would spin forever on repeated reverts.
+				if len(ctx.Batch) == prevLen {
+					return fmt.Errorf("relay: failed to remove reverted op at index %d (%s)", revert.OpIndex, revert.Reason)
+				}
 				opts.Batch = ctx.Batch
 			} else {
 				opts.GasLimit = est

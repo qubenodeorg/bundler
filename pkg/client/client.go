@@ -135,6 +135,9 @@ func (i *Client) SetGetStakeFunc(fn stake.GetStakeFunc) {
 // using the EntryPoint address as the authoritative version source and falling back to
 // field-based detection on the request map.
 func parseVersionedUserOp(op map[string]any, ep common.Address) (userop.UserOperationInterface, userop.Version, error) {
+	if op == nil {
+		return nil, userop.V0_6, errors.New("user operation data is nil")
+	}
 	version := userop.DetectVersionFromEntryPoint(ep)
 	if version == userop.V0_6 {
 		// Override v0.6 default if the request body clearly indicates a newer version.
