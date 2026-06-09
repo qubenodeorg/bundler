@@ -11,7 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-type parsedTransaction struct {
+type ParsedTransaction struct {
 	BlockHash         common.Hash    `json:"blockHash"`
 	BlockNumber       string         `json:"blockNumber"`
 	From              common.Address `json:"from"`
@@ -33,7 +33,7 @@ type UserOperationReceipt struct {
 	ActualGasCost string             `json:"actualGasCost"`
 	ActualGasUsed string             `json:"actualGasUsed"`
 	From          common.Address     `json:"from"`
-	Receipt       *parsedTransaction `json:"receipt"`
+	Receipt       *ParsedTransaction `json:"receipt"`
 	Logs          []*types.Log       `json:"logs"`
 }
 
@@ -78,7 +78,7 @@ func GetUserOperationReceipt(
 			effectiveGasPrice = tx.GasPrice()
 		}
 
-		txnReceipt := &parsedTransaction{
+		txnReceipt := &ParsedTransaction{
 			BlockHash:         receipt.BlockHash,
 			BlockNumber:       hexutil.EncodeBig(receipt.BlockNumber),
 			From:              from,

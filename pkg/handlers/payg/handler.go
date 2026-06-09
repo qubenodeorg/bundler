@@ -39,44 +39,34 @@ func New(
 	}
 }
 
-func (h *Handler) Run(
+// isV09 reports whether the given op is a v0.9 UserOperation. v0.9 has a special
+// response shape where the paymaster signature is returned separately from
+// paymasterAndData.
+func isV09(op userop.UserOperationInterface) bool {
+	_, ok := op.(*uov09.UserOperation)
+	return ok
+}
+
+// convertOp normalizes a versioned UserOperation to the canonical packed v0.6 format used
+// downstream by the gas estimator and contract helpers.
+func convertOp(op userop.UserOperationInterface) (*userop.UserOperation, error) {
+	v06Op, err := userop.ConvertToV06Packed(op)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert userOp to v0.6 packed: %w", err)
+	}
+	return v06Op, nil
+}
+
+// buildResponse assembles the SponsorUserOperationResponse for the given op + post-estimation
+// packed op + signature. v0.9 returns the paymaster signature separately; earlier versions
+// embed it inside paymasterAndData.
+func buildResponse(
 	op userop.UserOperationInterface,
-	ep common.Address,
-	pm common.Address,
+	pmOp *userop.UserOperation,
+	data *contract.Data,
+	sig []byte,
 ) (*handlers.SponsorUserOperationResponse, error) {
-	data := contract.NewData(pm, common.HexToAddress("0x"), big.NewInt(0))
-
-	// Convert to v0.6 for estimation if needed.
-	v06Op, ok := op.(*userop.UserOperation)
-	if !ok {
-		converted, err := gas.ConvertToV06(op)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert userOp to v0.6: %w", err)
-		}
-		v06Op = converted
-	}
-
-	// Estimate gas values to account for paymasterAndData.
-	pmOp, err := h.gasEstimator.OverrideOpGasLimitsForPND(v06Op, ep, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to override gas limits for paymasterAndData: %w", err)
-	}
-
-	// Fetch hash.
-	hash, err := contract.GetHash(h.eth, pmOp, data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get contract hash: %w", err)
-	}
-
-	// Sign hash.
-	sig, err := contract.Sign(hash[:], h.signer)
-	if err != nil {
-		return nil, err
-	}
-
-	// For v0.9+, return paymasterSignature separately.
-	if _, isV09 := op.(*uov09.UserOperation); isV09 {
-		// Encode paymasterAndData without signature for v0.9.
+	if isV09(op) {
 		pnd, err := contract.EncodePaymasterAndData(data, []byte{})
 		if err != nil {
 			return nil, err
@@ -89,17 +79,53 @@ func (h *Handler) Run(
 			CallGasLimit:         hexutil.EncodeBig(pmOp.CallGasLimit),
 		}, nil
 	}
-
-	// Encode final paymasterAndData for v0.6/v0.7/v0.8.
 	pnd, err := contract.EncodePaymasterAndData(data, sig)
 	if err != nil {
 		return nil, err
 	}
-
 	return &handlers.SponsorUserOperationResponse{
 		PaymasterAndData:     hexutil.Encode(pnd),
 		PreVerificationGas:   hexutil.EncodeBig(pmOp.PreVerificationGas),
 		VerificationGasLimit: hexutil.EncodeBig(pmOp.VerificationGasLimit),
 		CallGasLimit:         hexutil.EncodeBig(pmOp.CallGasLimit),
 	}, nil
+}
+
+// signOp generates the paymaster signature for the given packed op + contract data.
+func (h *Handler) signOp(pmOp *userop.UserOperation, data *contract.Data) ([]byte, error) {
+	hash, err := contract.GetHash(h.eth, pmOp, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get contract hash: %w", err)
+	}
+	sig, err := contract.Sign(hash[:], h.signer)
+	if err != nil {
+		return nil, err
+	}
+	return sig, nil
+}
+
+func (h *Handler) Run(
+	op userop.UserOperationInterface,
+	ep common.Address,
+	pm common.Address,
+) (*handlers.SponsorUserOperationResponse, error) {
+	data := contract.NewData(pm, common.HexToAddress("0x"), big.NewInt(0))
+
+	v06Op, err := convertOp(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// Estimate gas values to account for paymasterAndData.
+	pmOp, err := h.gasEstimator.OverrideOpGasLimitsForPND(v06Op, ep, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to override gas limits for paymasterAndData: %w", err)
+	}
+
+	sig, err := h.signOp(pmOp, data)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildResponse(op, pmOp, data, sig)
 }

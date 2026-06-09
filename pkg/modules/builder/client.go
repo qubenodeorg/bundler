@@ -11,11 +11,17 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/metachris/flashbotsrpc"
+	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	"github.com/zarbanio/bundler/pkg/entrypoint/transaction"
+	v07txn "github.com/zarbanio/bundler/pkg/entrypoint/v07/transaction"
+	v08txn "github.com/zarbanio/bundler/pkg/entrypoint/v08/transaction"
+	v09txn "github.com/zarbanio/bundler/pkg/entrypoint/v09/transaction"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // BuilderClient provides a connection to a block builder API to enable UserOperations to be sent through the
@@ -57,11 +63,94 @@ func (b *BuilderClient) SetWaitTimeout(timeout time.Duration) {
 	b.waitTimeout = timeout
 }
 
+// estimateHandleOpsGas dispatches to the version-appropriate EstimateHandleOpsGas implementation.
+func estimateHandleOpsGas(
+	version userop.Version,
+	opts *transaction.Opts,
+) (uint64, *reverts.FailedOpRevert, error) {
+	switch version {
+	case userop.V0_7:
+		return v07txn.EstimateHandleOpsGas(toV07Opts(opts))
+	case userop.V0_8:
+		return v08txn.EstimateHandleOpsGas(toV08Opts(opts))
+	case userop.V0_9:
+		return v09txn.EstimateHandleOpsGas(toV09Opts(opts))
+	default:
+		return transaction.EstimateHandleOpsGas(opts)
+	}
+}
+
+// handleOps dispatches to the version-appropriate HandleOps implementation.
+func handleOps(version userop.Version, opts *transaction.Opts) (*types.Transaction, error) {
+	switch version {
+	case userop.V0_7:
+		return v07txn.HandleOps(toV07Opts(opts))
+	case userop.V0_8:
+		return v08txn.HandleOps(toV08Opts(opts))
+	case userop.V0_9:
+		return v09txn.HandleOps(toV09Opts(opts))
+	default:
+		return transaction.HandleOps(opts)
+	}
+}
+
+func toV07Opts(o *transaction.Opts) *v07txn.Opts {
+	return &v07txn.Opts{
+		EOA:         o.EOA,
+		Eth:         o.Eth,
+		ChainID:     o.ChainID,
+		EntryPoint:  o.EntryPoint,
+		Batch:       o.Batch,
+		Beneficiary: o.Beneficiary,
+		BaseFee:     o.BaseFee,
+		Tip:         o.Tip,
+		GasPrice:    o.GasPrice,
+		GasLimit:    o.GasLimit,
+		NoSend:      o.NoSend,
+		WaitTimeout: o.WaitTimeout,
+	}
+}
+
+func toV08Opts(o *transaction.Opts) *v08txn.Opts {
+	return &v08txn.Opts{
+		EOA:         o.EOA,
+		Eth:         o.Eth,
+		ChainID:     o.ChainID,
+		EntryPoint:  o.EntryPoint,
+		Batch:       o.Batch,
+		Beneficiary: o.Beneficiary,
+		BaseFee:     o.BaseFee,
+		Tip:         o.Tip,
+		GasPrice:    o.GasPrice,
+		GasLimit:    o.GasLimit,
+		NoSend:      o.NoSend,
+		WaitTimeout: o.WaitTimeout,
+	}
+}
+
+func toV09Opts(o *transaction.Opts) *v09txn.Opts {
+	return &v09txn.Opts{
+		EOA:         o.EOA,
+		Eth:         o.Eth,
+		ChainID:     o.ChainID,
+		EntryPoint:  o.EntryPoint,
+		Batch:       o.Batch,
+		Beneficiary: o.Beneficiary,
+		BaseFee:     o.BaseFee,
+		Tip:         o.Tip,
+		GasPrice:    o.GasPrice,
+		GasLimit:    o.GasLimit,
+		NoSend:      o.NoSend,
+		WaitTimeout: o.WaitTimeout,
+	}
+}
+
 // SendUserOperation returns a BatchHandler that is used by the Bundler to send batches to a block builder
 // that supports eth_sendBundle.
 func (b *BuilderClient) SendUserOperation() modules.BatchHandlerFunc {
 	return func(ctx *modules.BatchHandlerCtx) error {
-		opts := transaction.Opts{
+		version := userop.DetectVersionFromEntryPoint(ctx.EntryPoint)
+		opts := &transaction.Opts{
 			EOA:         b.eoa,
 			Eth:         b.eth,
 			ChainID:     ctx.ChainID,
@@ -77,12 +166,19 @@ func (b *BuilderClient) SendUserOperation() modules.BatchHandlerFunc {
 		}
 		// Estimate gas for handleOps() and drop all userOps that cause unexpected reverts.
 		for len(ctx.Batch) > 0 {
-			est, revert, err := transaction.EstimateHandleOpsGas(&opts)
+			prevLen := len(ctx.Batch)
+			est, revert, err := estimateHandleOpsGas(version, opts)
 
 			if err != nil {
 				return err
 			} else if revert != nil {
 				ctx.MarkOpIndexForRemoval(revert.OpIndex, revert.Reason)
+				// MarkOpIndexForRemoval is a no-op for out-of-range indexes. Without this
+				// guard the loop would spin forever on repeated reverts.
+				if len(ctx.Batch) == prevLen {
+					return fmt.Errorf("builder: failed to remove reverted op at index %d (%s)", revert.OpIndex, revert.Reason)
+				}
+				opts.Batch = ctx.Batch
 			} else {
 				opts.GasLimit = est
 				break
@@ -93,6 +189,7 @@ func (b *BuilderClient) SendUserOperation() modules.BatchHandlerFunc {
 		if len(ctx.Batch) == 0 {
 			return nil
 		}
+		opts.Batch = ctx.Batch
 
 		// Calculate the max base fee up to a future block number.
 		bn, err := b.eth.BlockNumber(context.Background())
@@ -109,9 +206,12 @@ func (b *BuilderClient) SendUserOperation() modules.BatchHandlerFunc {
 		opts.BaseFee = mbf
 
 		// Create no send transaction to the EntryPoint
-		txn, err := transaction.HandleOps(&opts)
+		txn, err := handleOps(version, opts)
 		if err != nil {
 			return err
+		}
+		if txn == nil {
+			return errors.New("builder: HandleOps returned nil transaction")
 		}
 
 		// Broadcast bundle to a list of ethereum block builders for all blocks up to a future block.
