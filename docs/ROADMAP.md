@@ -367,7 +367,7 @@
   - `eth_getUserOperationReceipt`
   - EIP-7702 flow
   - Paymaster signature flow
-- [ ] Test on Arbitrum Sepolia:
+- [ ] Test on Arbitrum One:
   - Deploy test contracts
   - Test with Arbitrum gas calculations
   - Verify L2-specific behavior
@@ -387,6 +387,8 @@
 - [ ] Update CI workflows:
   - `.github/workflows/compliance.yml`
   - `.github/workflows/e2e.yml`
+  - Use v0.7 contracts and EntryPoint
+  - Use v0.8 contracts and EntryPoint
   - Use v0.9 contracts and EntryPoint
 
 **Deliverable**: Compliance tests pass
