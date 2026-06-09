@@ -143,8 +143,8 @@ func TestV08_MarshalJSONWithAndWithoutAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalJSON with auth: %v", err)
 	}
-	if len(withAuth) == 0 {
-		t.Fatalf("empty marshalled JSON")
+	if !bytes.Contains(withAuth, []byte("eip7702Auth")) {
+		t.Fatalf("expected JSON to contain eip7702Auth, got %s", withAuth)
 	}
 
 	op2 := mockV08Op()
@@ -152,8 +152,8 @@ func TestV08_MarshalJSONWithAndWithoutAuth(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalJSON no auth: %v", err)
 	}
-	if len(noAuth) == 0 {
-		t.Fatalf("empty marshalled JSON without auth")
+	if bytes.Contains(noAuth, []byte("eip7702Auth")) {
+		t.Fatalf("expected JSON to omit eip7702Auth when unset, got %s", noAuth)
 	}
 }
 

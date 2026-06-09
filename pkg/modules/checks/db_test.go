@@ -72,12 +72,18 @@ func TestRemoveSavedCodeHashes(t *testing.T) {
 	db := newMemDB(t)
 	a := common.HexToHash("0x01")
 	b := common.HexToHash("0x02")
-	raw, _ := json.Marshal([]codeHash{{Address: common.HexToAddress("0xaa")}})
-	_ = db.Update(func(txn *badger.Txn) error {
-		_ = txn.Set(getCodeHashesKey(a), raw)
-		_ = txn.Set(getCodeHashesKey(b), raw)
-		return nil
-	})
+	raw, err := json.Marshal([]codeHash{{Address: common.HexToAddress("0xaa")}})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := db.Update(func(txn *badger.Txn) error {
+		if err := txn.Set(getCodeHashesKey(a), raw); err != nil {
+			return err
+		}
+		return txn.Set(getCodeHashesKey(b), raw)
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
 
 	if err := removeSavedCodeHashes(db, a, b); err != nil {
 		t.Fatalf("removeSavedCodeHashes: %v", err)

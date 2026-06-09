@@ -90,8 +90,13 @@ func TestV07_GetMaxPrefund(t *testing.T) {
 
 func TestV07_GetDynamicGasPrice(t *testing.T) {
 	op := mockV07Op()
-	if op.GetDynamicGasPrice(nil).Cmp(op.MaxPriorityFeePerGas) > 0 && op.GetDynamicGasPrice(nil).Cmp(op.MaxFeePerGas) > 0 {
-		t.Fatalf("dynamic gas price should be capped at maxFeePerGas")
+	got := op.GetDynamicGasPrice(nil)
+	want := op.MaxPriorityFeePerGas
+	if want.Cmp(op.MaxFeePerGas) > 0 {
+		want = op.MaxFeePerGas
+	}
+	if got.Cmp(want) != 0 {
+		t.Fatalf("dynamic gas price (nil basefee): got %s want %s", got, want)
 	}
 	huge := new(big.Int).Lsh(big.NewInt(1), 200)
 	if got := op.GetDynamicGasPrice(huge); got.Cmp(op.MaxFeePerGas) != 0 {

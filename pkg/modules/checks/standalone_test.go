@@ -29,6 +29,7 @@ func newStandalone(t *testing.T) (*Standalone, *badger.DB, *httptest.Server) {
 	if err != nil {
 		t.Fatalf("rpc.Dial: %v", err)
 	}
+	t.Cleanup(r.Close)
 
 	ov := gas.NewDefaultOverhead()
 	alt, err := altmempools.New(big.NewInt(1), nil)
@@ -77,11 +78,14 @@ func TestStandalone_Clean_RemovesHashes(t *testing.T) {
 	hash1 := op1.GetUserOpHash(common.Address{}, big.NewInt(1))
 	hash2 := op2.GetUserOpHash(common.Address{}, big.NewInt(1))
 
-	_ = db.Update(func(txn *badger.Txn) error {
-		_ = txn.Set(getCodeHashesKey(hash1), []byte("[]"))
-		_ = txn.Set(getCodeHashesKey(hash2), []byte("[]"))
-		return nil
-	})
+	if err := db.Update(func(txn *badger.Txn) error {
+		if err := txn.Set(getCodeHashesKey(hash1), []byte("[]")); err != nil {
+			return err
+		}
+		return txn.Set(getCodeHashesKey(hash2), []byte("[]"))
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
 
 	ctx := modules.NewBatchHandlerContext(
 		[]*userop.UserOperation{&op1},
