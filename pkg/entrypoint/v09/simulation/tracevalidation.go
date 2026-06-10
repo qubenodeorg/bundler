@@ -131,7 +131,10 @@ func hasPaymasterSignature(input []byte) bool {
 		return false
 	}
 	offset := new(big.Int).SetBytes(payload[384:416])
-	if !offset.IsUint64() {
+	// Bounding the offset by the payload length keeps lenPos+32 below
+	// uint64 overflow, so the bounds check below cannot be bypassed by a
+	// crafted offset word.
+	if !offset.IsUint64() || offset.Uint64() > uint64(len(payload)) {
 		return false
 	}
 	lenPos := offset.Uint64() + 96

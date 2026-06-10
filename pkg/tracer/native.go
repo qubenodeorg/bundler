@@ -1,6 +1,9 @@
 package tracer
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // Tracer selection values for the erc4337_bundler_native_bundler_*_tracer env
 // vars. An empty value defaults to the native tracer; set "js" to fall back to
@@ -22,14 +25,14 @@ const (
 // selects the native erc7562Tracer. Anything other than an explicit "js"
 // selects native.
 func IsNativeCollector(v string) bool {
-	return v != JSFallback
+	return !strings.EqualFold(strings.TrimSpace(v), JSFallback)
 }
 
 // IsNativeExecutor reports whether the configured executor tracer value
 // selects the native callTracer. Anything other than an explicit "js"
 // selects native.
 func IsNativeExecutor(v string) bool {
-	return v != JSFallback
+	return !strings.EqualFold(strings.TrimSpace(v), JSFallback)
 }
 
 // CollectorName returns the effective collector tracer name for logging.

@@ -78,6 +78,19 @@ func buildValidatePaymasterInput(sigLen int) []byte {
 	return append(selector, payload...)
 }
 
+// TestHasPaymasterSignatureCraftedOffset: an offset word near MaxUint64 must
+// be rejected without the lenPos+32 addition wrapping past the bounds check.
+func TestHasPaymasterSignatureCraftedOffset(t *testing.T) {
+	input := buildValidatePaymasterInput(65)
+	payload := input[4:]
+	for i := 384; i < 416; i++ {
+		payload[i] = 0xff
+	}
+	if hasPaymasterSignature(input) {
+		t.Error("crafted max-uint64 offset must not report a signature")
+	}
+}
+
 func TestPaymasterSignatureHookV09(t *testing.T) {
 	entryPoint := common.HexToAddress("0x433709009B8330FDa32311DF1C2AFA402eD8D009")
 	paymaster := common.HexToAddress("0x2222222222222222222222222222222222222222")
