@@ -30,6 +30,8 @@ LOG_DIR="${REPO_ROOT}/tmp/e2e"
 mkdir -p "${LOG_DIR}"
 
 # Test signing keys (anvil deterministic accounts #0 and #9).
+# OWNER_PK: anvil deterministic account #0 (kept for reference; the owner key is
+# supplied to the TS suite via config.ts, not consumed by this script).
 OWNER_PK="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 RELAYER_PK="0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6"
 
@@ -135,13 +137,12 @@ run_chain() {
 
   ensure_artifacts
 
-  # Build the bundler binary.
-  (cd "${REPO_ROOT}" && go build -o "${LOG_DIR}/qubenode-bundler" .)
+  # The bundler binary is built once at the script's top-level.
 
   # Configure the bundler.
   rm -f "${REPO_ROOT}/.e2e-state.json"
 
-  local data_dir="/tmp/qubenode_bundler_e2e_${chain}"
+  local data_dir="${REPO_ROOT}/tmp/qubenode_bundler_e2e_${chain}"
   rm -rf "${data_dir}"
 
   local arb_flag="false"
@@ -179,6 +180,9 @@ run_chain() {
   ANVIL_PID=""
   BUNDLER_PID=""
 }
+
+# Build the bundler binary once before running any chains.
+(cd "${REPO_ROOT}" && go build -o "${LOG_DIR}/qubenode-bundler" .)
 
 case "${CHAIN}" in
   all)

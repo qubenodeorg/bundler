@@ -18,15 +18,26 @@ export class JsonRpcCallError extends Error {
 export class BundlerRpc {
   private id = 0;
 
-  constructor(private readonly url: string) {}
+  constructor(
+    private readonly url: string,
+    private readonly requestTimeoutMs = 15_000,
+  ) {}
 
   async call<T = unknown>(method: string, params: unknown[]): Promise<T> {
     this.id += 1;
-    const res = await fetch(this.url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: this.id, method, params }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(this.url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: this.id, method, params }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) {
       throw new Error(`${method} HTTP ${res.status} ${res.statusText}`);
     }
@@ -91,10 +102,20 @@ export async function pollReceipt(
   const timeoutMs = opts.timeoutMs ?? 60_000;
   const intervalMs = opts.intervalMs ?? 1_000;
   const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
   while (Date.now() < deadline) {
-    const r = await bundler.getUserOperationReceipt(userOpHash);
-    if (r) return r;
+    try {
+      const r = await bundler.getUserOperationReceipt(userOpHash);
+      if (r) return r;
+    } catch (err) {
+      // Transient RPC errors (e.g. during startup/load) are non-fatal — keep
+      // polling until the deadline rather than aborting the whole run.
+      lastError = err;
+    }
     await new Promise((res) => setTimeout(res, intervalMs));
   }
-  throw new Error(`receipt for ${userOpHash} not produced within ${timeoutMs}ms`);
+  throw new Error(
+    `receipt for ${userOpHash} not produced within ${timeoutMs}ms` +
+      (lastError ? ` (last error: ${String(lastError)})` : ""),
+  );
 }

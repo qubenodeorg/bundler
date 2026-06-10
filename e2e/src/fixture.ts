@@ -54,7 +54,7 @@ export async function setupE2EContext(): Promise<E2EContext> {
 // ensureEntryPointInstalled fast-paths when the address already has code (e.g.
 // a prior test in the same anvil session already injected it).
 async function ensureEntryPointInstalled(anvil: AnvilCheats): Promise<void> {
-  const provider = (anvil as unknown as { provider: JsonRpcProvider }).provider;
+  const provider = anvil.provider;
   const existing = await provider.getCode(ENTRY_POINT_V09);
   if (existing && existing !== "0x") return;
   const art = loadArtifact("EntryPoint");
@@ -71,7 +71,13 @@ async function ensureFactoryDeployed(deployer: Wallet): Promise<string> {
     path.join(process.cwd(), ".e2e-state.json");
   if (fs.existsSync(stateFile)) {
     const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-    if (state.factory) return state.factory;
+    // Only reuse a cached factory address if it still has code on-chain — a
+    // stale .e2e-state.json from a prior anvil session would otherwise point at
+    // an undeployed address and fail on first interaction.
+    if (typeof state.factory === "string") {
+      const code = await deployer.provider!.getCode(state.factory);
+      if (code && code !== "0x") return state.factory;
+    }
   }
   const address = await deployFactory(deployer);
   const state = fs.existsSync(stateFile)

@@ -5,7 +5,7 @@ import { JsonRpcProvider, toBeHex } from "ethers";
 // mine a block, advance time, snapshot/revert).
 
 export class AnvilCheats {
-  constructor(private readonly provider: JsonRpcProvider) {}
+  constructor(public readonly provider: JsonRpcProvider) {}
 
   async setCode(address: string, code: string): Promise<void> {
     await this.provider.send("anvil_setCode", [address, code]);

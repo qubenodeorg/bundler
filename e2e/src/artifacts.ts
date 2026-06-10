@@ -22,9 +22,18 @@ export function loadArtifact(name: string): CompiledArtifact {
     );
   }
   const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+  const bytecode =
+    typeof raw.bytecode === "string"
+      ? raw.bytecode
+      : typeof raw.bytecode?.object === "string"
+        ? raw.bytecode.object
+        : null;
+  if (!Array.isArray(raw.abi) || !bytecode) {
+    throw new Error(`invalid artifact format: ${p}`);
+  }
   return {
     abi: raw.abi,
-    bytecode: typeof raw.bytecode === "string" ? raw.bytecode : raw.bytecode.object,
+    bytecode,
     deployedBytecode:
       typeof raw.deployedBytecode === "string"
         ? raw.deployedBytecode

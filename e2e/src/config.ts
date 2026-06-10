@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { getAddress } from "ethers";
 
 export type ChainName = "ethereum" | "arbitrum";
@@ -74,6 +76,7 @@ export function loadEnv(): EnvConfig {
     anvilRpcUrl: getRequired("E2E_ANVIL_URL"),
     bundlerRpcUrl: getRequired("E2E_BUNDLER_URL"),
     artifactsDir:
-      process.env.E2E_ARTIFACTS_DIR ?? new URL("../artifacts", import.meta.url).pathname,
+      process.env.E2E_ARTIFACTS_DIR ??
+      fileURLToPath(new URL("../artifacts", import.meta.url)),
   };
 }

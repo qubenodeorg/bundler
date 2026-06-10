@@ -34,7 +34,8 @@ export async function signEip7702Authorization(
   // EIP-7702 spec: signing payload = keccak256(MAGIC || rlp([chain_id, address, nonce]))
   // For e2e testing we use a simplified, deterministic scheme: the bundler's TS
   // validator only checks structural presence + yParity normalization, so a
-  // raw ECDSA signature over keccak256(packed tuple) is sufficient.
+  // personal_sign signature (wallet.signMessage applies the Ethereum Signed
+  // Message prefix) over keccak256(packed tuple) is sufficient.
   const message = keccak256(
     AbiCoder.defaultAbiCoder().encode(
       ["uint256", "address", "uint256"],

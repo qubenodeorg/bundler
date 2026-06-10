@@ -80,7 +80,7 @@ describe("arbitrum one fork — v0.9 bundler", () => {
     // On Arbitrum the PVG buffer factor is 16x — the resulting preVerificationGas
     // is dominated by L1 calldata cost and should be materially larger than the
     // ~50k baseline you'd see on Ethereum L1 mainnet for the same op.
-    expect(BigInt(est.preVerificationGas)).toBeGreaterThan(50_000n);
+    expect(BigInt(est.preVerificationGas)).toBeGreaterThan(150_000n);
 
     expect(est).toHaveProperty("paymasterVerificationGasLimit");
     expect(est).toHaveProperty("paymasterPostOpGasLimit");

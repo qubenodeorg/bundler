@@ -205,17 +205,13 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
     // anvil does not yet do for arbitrary delegates. We assert that the
     // bundler at least accepts the envelope and surfaces a meaningful error,
     // rather than silently dropping the auth field.
-    let acceptedOrRejected = false;
     try {
       await ctx.bundler.estimateUserOperationGas(toRpcJson(op), ENTRY_POINT_V09);
-      acceptedOrRejected = true;
     } catch (err: any) {
       // We expect either a validation-rule failure or a delegation mismatch;
       // we do NOT want a JSON-schema / "unknown field" rejection.
       expect(err.message).not.toMatch(/unknown field|invalid request/i);
-      acceptedOrRejected = true;
     }
-    expect(acceptedOrRejected).toBe(true);
   });
 
   it("userOpHash excludes paymasterSignature (v0.9 spec)", async () => {
