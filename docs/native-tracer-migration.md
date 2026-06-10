@@ -54,6 +54,10 @@ from the plan:
   Phase 4 JS deletion — deferred until soak, per plan. 2b production wiring —
   `TraceCombined` exists but no current flow runs validation and execution in
   the same request; wire it when such a flow appears.
+- **Follow-up (from PR #34 review):** thread a caller-provided `context.Context`
+  through the trace input structs so `debug_traceCall` is cancellable —
+  `context.Background()` is currently the pattern at every `CallContext` site
+  in the repo, so this is a repo-wide change, not specific to the new paths.
 
 ## 1. Goal
 
