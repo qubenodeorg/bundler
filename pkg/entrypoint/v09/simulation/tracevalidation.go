@@ -63,27 +63,83 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	var res tracer.BundlerCollectorReturn
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
 		To:           in.EntryPoint,
 		Data:         tx.Data(),
 		MaxFeePerGas: hexutil.Big(*big.NewInt(0)),
 	}
-	collector, err := tracer.Loaded.ForVersion(userop.V0_9, in.EntryPoint.Hex())
-	if err != nil {
-		return nil, err
-	}
 	opts := utils.TraceCallOpts{
-		Tracer:         collector.Collector,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
 
-	if err := in.Rpc.CallContext(context.Background(), &res, "debug_traceCall", &req, "latest", &opts); err != nil {
-		return nil, err
+	var res *tracer.BundlerCollectorReturn
+	if tracer.IsNativeCollector(in.Tracer) {
+		opts.Tracer = tracer.NativeCollector
+		opts.TracerConfig = tracer.Erc7562TracerConfig()
+
+		var frame tracer.Erc7562Frame
+		if err := in.Rpc.CallContext(context.Background(), &frame, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		res, err = tracer.FromErc7562(&frame, in.EntryPoint, PaymasterSignatureHook)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		collector, err := tracer.Loaded.ForVersion(userop.V0_9, in.EntryPoint.Hex())
+		if err != nil {
+			return nil, err
+		}
+		opts.Tracer = collector.Collector
+
+		var ret tracer.BundlerCollectorReturn
+		if err := in.Rpc.CallContext(context.Background(), &ret, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		res = &ret
 	}
 
-	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, &res, in.DelegateAddress)
+	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, res, in.DelegateAddress)
+}
+
+// validatePaymasterUserOpSelector is the v0.9 EntryPoint's
+// validatePaymasterUserOp(...) selector, matching the JS collector tracer.
+const validatePaymasterUserOpSelector = "0xc04a6310"
+
+// PaymasterSignatureHook sets the PaymasterSignature flag on the paymaster's
+// top-level call when its validatePaymasterUserOp calldata carries a
+// non-empty paymasterSignature tail (v0.9 PackedUserOperation layout).
+func PaymasterSignatureHook(frame *tracer.Erc7562Frame, info *tracer.CallFromEntryPointInfo) {
+	if info.TopLevelMethodSig.String() != validatePaymasterUserOpSelector {
+		return
+	}
+	info.PaymasterSignature = hasPaymasterSignature(frame.Input)
+}
+
+// hasPaymasterSignature parses the validatePaymasterUserOp calldata. The
+// payload after the 4-byte selector contains the PackedUserOperation struct
+// starting at byte 96; word 12 (payload bytes 384..416) is the
+// paymasterSignature offset relative to the struct start, which points at a
+// length-prefixed bytes value.
+func hasPaymasterSignature(input []byte) bool {
+	if len(input) < 4 {
+		return false
+	}
+	payload := input[4:]
+	if len(payload) < 416 {
+		return false
+	}
+	offset := new(big.Int).SetBytes(payload[384:416])
+	if !offset.IsUint64() {
+		return false
+	}
+	lenPos := offset.Uint64() + 96
+	if uint64(len(payload)) < lenPos+32 {
+		return false
+	}
+	sigLen := new(big.Int).SetBytes(payload[lenPos : lenPos+32])
+	return sigLen.Sign() > 0
 }
 
 func ProcessTraceResult(

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -74,29 +73,45 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	}
 
 	out := &TraceOutput{}
-	var call v06exec.Call
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
 		To:           in.EntryPoint,
 		Data:         tx.Data(),
 		MaxFeePerGas: hexutil.Big(*mf),
 	}
-	exec, err := tracer.Loaded.ForVersion(userop.V0_9, in.EntryPoint.Hex())
-	if err != nil {
-		return nil, err
-	}
 	opts := utils.TraceCallOpts{
-		Tracer:         exec.Execution,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), in.Sos),
 	}
-	if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
-		return nil, err
-	}
 
-	entryPointAddr := strings.ToLower(in.EntryPoint.Hex())
-	callTrace, err := v06exec.ProcessBundlerExecution(&call, entryPointAddr)
-	if err != nil {
-		return nil, err
+	var callTrace *tracer.BundlerExecutionReturn
+	if tracer.IsNativeExecutor(in.Tracer) {
+		opts.Tracer = tracer.NativeExecutor
+		opts.TracerConfig = tracer.CallTracerConfig()
+
+		var call v06exec.Call
+		if err := in.Rpc.CallContext(context.Background(), &call, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		epABI, err := epv09.V09MetaData.GetAbi()
+		if err != nil {
+			return nil, err
+		}
+		callTrace, err = v06exec.ProcessBundlerExecution(&call, v06exec.NewTraceConfig(epABI, in.EntryPoint))
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		exec, err := tracer.Loaded.ForVersion(userop.V0_9, in.EntryPoint.Hex())
+		if err != nil {
+			return nil, err
+		}
+		opts.Tracer = exec.Execution
+
+		var ret tracer.BundlerExecutionReturn
+		if err := in.Rpc.CallContext(context.Background(), &ret, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		callTrace = &ret
 	}
 
 	if callTrace.ValidationOOG {

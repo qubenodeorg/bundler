@@ -29,6 +29,7 @@ import (
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
 	"github.com/zarbanio/bundler/pkg/modules/relay"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/tracer"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
@@ -40,6 +41,12 @@ func PrivateMode() {
 	logr := logger.NewZeroLogr().
 		WithName("qubenode_bundler").
 		WithValues("bundler_mode", "private")
+
+	logr.Info(
+		"tracer configuration",
+		"collector", tracer.CollectorName(conf.NativeBundlerCollectorTracer),
+		"executor", tracer.ExecutorName(conf.NativeBundlerExecutorTracer),
+	)
 
 	eoa, err := signer.New(conf.PrivateKey)
 	if err != nil {
@@ -145,7 +152,7 @@ func PrivateMode() {
 			ov,
 			chain,
 			conf.MaxBatchGasLimit,
-			"callTracer",
+			conf.NativeBundlerExecutorTracer,
 		),
 	)
 	c.SetGetUserOpByHashFunc(client.GetUserOpByHashWithEthClient(eth))

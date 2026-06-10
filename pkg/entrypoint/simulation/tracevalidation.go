@@ -2,7 +2,6 @@ package simulation
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -43,7 +42,6 @@ type TraceOutput struct {
 // TraceSimulateValidation makes a debug_traceCall to Entrypoint.simulateValidation(userop) and returns
 // information related to the validation phase of a UserOperation.
 func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
-	fmt.Println("TraceSimulateValidation")
 	ep, err := entrypoint.NewEntrypoint(in.EntryPoint, ethclient.NewClient(in.Rpc))
 	if err != nil {
 		return nil, err
@@ -58,9 +56,7 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := "callTracer"
 
-	var res tracer.BundlerCollectorReturn
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
 		To:           in.EntryPoint,
@@ -68,17 +64,33 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		MaxFeePerGas: hexutil.Big(*in.Op.MaxFeePerGas),
 	}
 	opts := utils.TraceCallOpts{
-		Tracer:         t,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
-	j, _ := json.MarshalIndent(req, "", "  ")
-	fmt.Println(string(j))
 
-	if err := in.Rpc.CallContext(context.Background(), &res, "debug_traceCall", &req, "latest", &opts); err != nil {
-		return nil, err
+	var res *tracer.BundlerCollectorReturn
+	if tracer.IsNativeCollector(in.Tracer) {
+		opts.Tracer = tracer.NativeCollector
+		opts.TracerConfig = tracer.Erc7562TracerConfig()
+
+		var frame tracer.Erc7562Frame
+		if err := in.Rpc.CallContext(context.Background(), &frame, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		res, err = tracer.FromErc7562(&frame, in.EntryPoint, nil)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		opts.Tracer = tracer.Loaded.V06.Collector
+
+		var ret tracer.BundlerCollectorReturn
+		if err := in.Rpc.CallContext(context.Background(), &ret, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		res = &ret
 	}
 
-	knownEntity, err := newKnownEntity(in.Op, &res, in.Stakes, in.DelegateAddress)
+	knownEntity, err := newKnownEntity(in.Op, res, in.Stakes, in.DelegateAddress)
 	altMempoolIds := []string{}
 	if err != nil {
 		return nil, err

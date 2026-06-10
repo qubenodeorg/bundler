@@ -26,6 +26,7 @@ type TraceStateOverrides struct {
 
 type TraceCallOpts struct {
 	Tracer         string            `json:"tracer"`
+	TracerConfig   map[string]any    `json:"tracerConfig,omitempty"`
 	StateOverrides state.OverrideSet `json:"stateOverrides"`
 }
 
