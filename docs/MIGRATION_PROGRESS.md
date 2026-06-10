@@ -233,6 +233,37 @@
 ## Week 4: Testing & Polish (Days 22-30)
 
 - [x] Unit tests (>70% coverage for new code)
-- [ ] E2E tests
+- [x] E2E tests
 - [ ] Compliance tests
 - [ ] Documentation updates
+
+### Days 25-27: E2E Testing
+
+**Approach**: Stood up a TypeScript-based e2e harness in `e2e/` driven by Vitest, plus an orchestration script in `scripts/e2e/run.sh` that boots anvil (optionally forking mainnet or Arbitrum), installs the v0.9 EntryPoint bytecode at the canonical address via `anvil_setCode`, deploys a fresh SimpleAccountFactory, builds and starts the bundler against the fork, and runs the suite. Tests speak directly to the bundler's JSON-RPC surface (`eth_sendUserOperation`, `eth_estimateUserOperationGas`, `eth_getUserOperationReceipt`, `pm_sponsorUserOperation`) and to the anvil node via ethers.
+
+- [x] Create `e2e/` TypeScript test suite (`package.json`, `tsconfig.json`, `vitest.config.ts`)
+- [x] Implement `src/v09-userop.ts` — TS port of `pkg/userop/v09/object.go` (pack, hash, JSON marshalling)
+- [x] Implement `src/bundler-rpc.ts` — bundler JSON-RPC client + `pollReceipt` helper
+- [x] Implement `src/anvil.ts` — anvil cheat-code wrappers (setCode, setBalance, mine, snapshot/revert)
+- [x] Implement `src/accounts.ts` — SimpleAccountFactory deployment + counterfactual address + `execute` encoding
+- [x] Implement `src/signer.ts` — UserOp + EIP-7702 authorization signing
+- [x] Implement `src/fixture.ts` — installs EntryPoint v0.9 deployedBytecode and deploys factory once per run
+- [x] Implement `src/fetch-artifacts.ts` — downloads v0.9 contract artifacts from `@account-abstraction/contracts@0.9.0-rc.1`
+- [x] Add `scripts/e2e/run.sh` — orchestrates anvil + bundler + tests with cleanup on exit
+- [x] Add Makefile targets `e2e`, `e2e-ethereum`, `e2e-arbitrum`, `e2e-fetch-artifacts`
+- [x] Write `test/ethereum.test.ts`:
+  - `eth_supportedEntryPoints` / `eth_chainId`
+  - `eth_estimateUserOperationGas` returns v0.9 fields (incl. `paymasterVerificationGasLimit`, `paymasterPostOpGasLimit`)
+  - `eth_sendUserOperation` deploys SimpleAccount and routes an ETH transfer; verifies receipt + `eth_getUserOperationByHash`
+  - `eth_getUserOperationReceipt` returns null for unknown hashes
+  - `pm_sponsorUserOperation` returns `paymasterSignature` separately from `paymasterAndData` (v0.9-specific)
+  - EIP-7702 flow — bundler accepts `eip7702Auth` envelope
+  - userOpHash excludes `paymasterSignature` (v0.9 spec)
+- [x] Write `test/arbitrum.test.ts`:
+  - `eth_chainId` reports Arbitrum One
+  - `eth_estimateUserOperationGas` applies Arbitrum L1-data PVG buffer (16x)
+  - `eth_sendUserOperation` lands a deploy+transfer op
+  - Receipt format is L2-correct (`transactionHash`, `gasUsed`, `effectiveGasPrice`)
+- [x] Document setup, prerequisites, and bootstrap flow in `e2e/README.md`
+
+**Deliverable**: E2E tests pass against forked Ethereum mainnet and Arbitrum One (`make e2e` with `ETH_MAINNET_RPC_URL` and `ARB_MAINNET_RPC_URL` set).
