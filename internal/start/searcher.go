@@ -30,6 +30,7 @@ import (
 	"github.com/zarbanio/bundler/pkg/modules/expire"
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/tracer"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 )
@@ -40,6 +41,12 @@ func SearcherMode() {
 	logr := logger.NewZeroLogr().
 		WithName("qubenode_bundler").
 		WithValues("bundler_mode", "searcher")
+
+	logr.Info(
+		"tracer configuration",
+		"collector", tracer.CollectorName(conf.NativeBundlerCollectorTracer),
+		"executor", tracer.ExecutorName(conf.NativeBundlerExecutorTracer),
+	)
 
 	eoa, err := signer.New(conf.PrivateKey)
 	if err != nil {

@@ -198,6 +198,7 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 						ctx.UserOp.GetFactory():  ctx.GetFactoryDepositInfo(),
 						ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
 					},
+					ctx.Version,
 				)
 			})
 		}

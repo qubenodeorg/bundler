@@ -63,27 +63,44 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	var res tracer.BundlerCollectorReturn
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
 		To:           in.EntryPoint,
 		Data:         tx.Data(),
 		MaxFeePerGas: hexutil.Big(*big.NewInt(0)),
 	}
-	collector, err := tracer.Loaded.ForVersion(userop.V0_8, in.EntryPoint.Hex())
-	if err != nil {
-		return nil, err
-	}
 	opts := utils.TraceCallOpts{
-		Tracer:         collector.Collector,
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
 
-	if err := in.Rpc.CallContext(context.Background(), &res, "debug_traceCall", &req, "latest", &opts); err != nil {
-		return nil, err
+	var res *tracer.BundlerCollectorReturn
+	if tracer.IsNativeCollector(in.Tracer) {
+		opts.Tracer = tracer.NativeCollector
+		opts.TracerConfig = tracer.Erc7562TracerConfig()
+
+		var frame tracer.Erc7562Frame
+		if err := in.Rpc.CallContext(context.Background(), &frame, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		res, err = tracer.FromErc7562(&frame, in.EntryPoint, nil)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		collector, err := tracer.Loaded.ForVersion(userop.V0_8, in.EntryPoint.Hex())
+		if err != nil {
+			return nil, err
+		}
+		opts.Tracer = collector.Collector
+
+		var ret tracer.BundlerCollectorReturn
+		if err := in.Rpc.CallContext(context.Background(), &ret, "debug_traceCall", &req, "latest", &opts); err != nil {
+			return nil, err
+		}
+		res = &ret
 	}
 
-	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, &res, in.DelegateAddress)
+	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, res, in.DelegateAddress)
 }
 
 func ProcessTraceResult(

@@ -1,0 +1,37 @@
+{
+  "type": "CALL",
+  "from": "0x0000000000000000000000000000000000000000",
+  "to": "0x433709009b8330fda32311df1c2afa402ed8d009",
+  "input": "0x765e827f",
+  "gas": "0x989680",
+  "gasUsed": "0x30d40",
+  "output": "0x",
+  "usedOpcodes": {},
+  "accessedSlots": { "reads": {}, "writes": {}, "transientReads": {}, "transientWrites": {} },
+  "extCodeAccessInfo": [],
+  "contractSize": {},
+  "outOfGas": false,
+  "keccak": [],
+  "logs": [],
+  "calls": [
+    {
+      "type": "CALL",
+      "from": "0x433709009b8330fda32311df1c2afa402ed8d009",
+      "to": "0x1111111111111111111111111111111111111111",
+      "input": "0x19822f7c",
+      "gas": "0x186a0",
+      "gasUsed": "0xc350",
+      "output": "0x",
+      "usedOpcodes": { "84": 1, "66": 1 },
+      "accessedSlots": { "reads": {}, "writes": {}, "transientReads": {}, "transientWrites": {} },
+      "extCodeAccessInfo": ["0x3333333333333333333333333333333333333333"],
+      "contractSize": {
+        "0x3333333333333333333333333333333333333333": { "contractSize": 64, "opcode": 241 }
+      },
+      "outOfGas": true,
+      "keccak": [],
+      "logs": [],
+      "calls": []
+    }
+  ]
+}

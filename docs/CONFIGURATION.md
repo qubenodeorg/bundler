@@ -53,8 +53,13 @@ These variables **must** be set for the bundler to start:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ERC4337_BUNDLER_NATIVE_BUNDLER_COLLECTOR_TRACER` | None | Path to native collector tracer (for custom opcode validation) |
-| `ERC4337_BUNDLER_NATIVE_BUNDLER_EXECUTOR_TRACER` | None | Path to native executor tracer (for gas estimation) |
+| `ERC4337_BUNDLER_NATIVE_BUNDLER_COLLECTOR_TRACER` | `erc7562Tracer` | Validation (ERC-7562) tracer: `erc7562Tracer` (native, default) or `js` (embedded JS fallback for nodes without native tracer support) |
+| `ERC4337_BUNDLER_NATIVE_BUNDLER_EXECUTOR_TRACER` | `callTracer` | Execution/gas-estimation tracer: `callTracer` (native, default; run with `{"withLog": true}`) or `js` (embedded JS fallback) |
+
+Native tracers run inside the node and are the standard go-ethereum / reth /
+erigon path; the JS fallback executes one interpreter callback per opcode and
+is far slower. Use `js` only when the node lacks `erc7562Tracer`/`callTracer`
+support. The active tracers are logged at startup as `tracer configuration`.
 
 ### Observability (OpenTelemetry)
 

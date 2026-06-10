@@ -1,0 +1,30 @@
+{
+  "erc7562Tracer": {
+    "type": "CALL",
+    "from": "0x0000000000000000000000000000000000000000",
+    "to": "0x433709009b8330fda32311df1c2afa402ed8d009",
+    "input": "0x765e827f",
+    "gas": "0x989680",
+    "gasUsed": "0x30d40",
+    "output": "0x",
+    "usedOpcodes": {},
+    "accessedSlots": { "reads": {}, "writes": {}, "transientReads": {}, "transientWrites": {} },
+    "extCodeAccessInfo": {},
+    "contractSize": {},
+    "outOfGas": false,
+    "keccak": [],
+    "logs": [],
+    "calls": []
+  },
+  "callTracer": {
+    "type": "CALL",
+    "from": "0x0000000000000000000000000000000000000000",
+    "to": "0x433709009b8330fda32311df1c2afa402ed8d009",
+    "input": "0x765e827f",
+    "gas": "0x989680",
+    "gasUsed": "0x30d40",
+    "output": "0x",
+    "value": "0x0",
+    "calls": []
+  }
+}
