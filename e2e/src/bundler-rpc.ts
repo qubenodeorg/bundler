@@ -93,7 +93,7 @@ export class BundlerRpc {
 
 // pollReceipt blocks until either a non-null receipt is available or the
 // timeout elapses. The bundler only writes a receipt after the op is included
-// in a block, so callers typically pair this with an anvil_mine.
+// in a block (geth --dev mines on demand when the bundle tx lands).
 export async function pollReceipt(
   bundler: BundlerRpc,
   userOpHash: string,

@@ -16,7 +16,7 @@ import { pollReceipt } from "../src/bundler-rpc.js";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
-describe("ethereum mainnet fork — v0.9 bundler", () => {
+describe("ethereum (geth --dev) — v0.9 bundler", () => {
   let ctx: E2EContext;
 
   beforeAll(async () => {
@@ -24,8 +24,8 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
   });
 
   afterAll(async () => {
-    // Tests share an anvil instance per file, so individual tests should not
-    // permanently mutate ergonomic state. Nothing to tear down here.
+    // Tests share one geth --dev instance per file, so individual tests should
+    // not permanently mutate shared state. Nothing to tear down here.
   });
 
   // Helper: build a counterfactual SimpleAccount op that pays its own prefund.
@@ -145,7 +145,7 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
       );
     } catch (err: any) {
       // The bundler ships with a hard-coded PayG paymaster address that must
-      // be deployed on the chain. If it isn't (raw anvil, no fork), skip.
+      // be deployed on the chain. It isn't on a fresh geth --dev chain, so skip.
       if (/paymaster|contract|reverted/i.test(err.message)) {
         console.warn(`pm_sponsorUserOperation unavailable on this fork: ${err.message}`);
         return;
@@ -204,10 +204,10 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
       eip7702Auth,
     };
 
-    // The 7702 path requires the chain to honor EIP-7702 transactions, which
-    // anvil does not yet do for arbitrary delegates. We assert that the
-    // bundler at least accepts the envelope and surfaces a meaningful error,
-    // rather than silently dropping the auth field.
+    // The 7702 path requires full end-to-end delegation support across the
+    // node, the bundler, and the account. Here we assert that the bundler at
+    // least accepts the envelope and surfaces a meaningful error, rather than
+    // silently dropping the auth field.
     try {
       await ctx.bundler.estimateUserOperationGas(toRpcJson(op), ENTRY_POINT_V09);
     } catch (err: any) {

@@ -16,10 +16,6 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        chain: [ethereum, arbitrum]
     steps:
       - uses: actions/checkout@v4
 
@@ -36,32 +32,21 @@ jobs:
           cache: npm
           cache-dependency-path: e2e/package-lock.json
 
-      # Pin a concrete version: resolving "stable" makes foundryup list
-      # releases via api.github.com, which gets rate-limited (403) on shared
-      # runners.
-      - name: Install Foundry (anvil)
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: v1.7.1
-
       - name: Cache v0.9 contract artifacts
         uses: actions/cache@v4
         with:
           path: e2e/artifacts
           key: e2e-artifacts-${{ hashFiles('e2e/src/fetch-artifacts.ts') }}
 
-      # If the fork RPC secret is unavailable (e.g. PRs from forks), anvil
-      # starts without a fork and the suite degrades gracefully.
-      - name: Run ${{ matrix.chain }} e2e suite
-        run: scripts/e2e/run.sh ${{ matrix.chain }}
-        env:
-          ETH_MAINNET_RPC_URL: ${{ secrets.ETH_RPC }}
-          ARB_MAINNET_RPC_URL: ${{ secrets.ARB_RPC }}
+      # The suite runs against geth --dev (pulled as a pinned docker image by
+      # run.sh when no local geth binary exists); no fork RPC URLs are needed.
+      - name: Run e2e suite
+        run: scripts/e2e/run.sh
 
-      - name: Upload anvil + bundler logs
+      - name: Upload geth + bundler logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-logs-${{ matrix.chain }}
+          name: e2e-logs
           path: tmp/e2e/*.log
           if-no-files-found: ignore

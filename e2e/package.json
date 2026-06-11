@@ -7,7 +7,6 @@
   "scripts": {
     "test": "vitest run",
     "test:ethereum": "vitest run test/ethereum.test.ts",
-    "test:arbitrum": "vitest run test/arbitrum.test.ts",
     "fetch-artifacts": "node --no-warnings=ExperimentalWarning --loader ts-node/esm src/fetch-artifacts.ts",
     "deploy-entrypoint": "node --no-warnings=ExperimentalWarning --loader ts-node/esm src/deploy-entrypoint.ts"
   },
