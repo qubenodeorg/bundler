@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { parseEther } from "ethers";
+import { Wallet, parseEther } from "ethers";
 
 import { setupE2EContext, fundCounterfactual, type E2EContext } from "../src/fixture.js";
 import { encodeExecute } from "../src/accounts.js";
 import { ENTRY_POINT_V09 } from "../src/config.js";
-import { signUserOp } from "../src/signer.js";
+import { DUMMY_SIGNATURE, signUserOp } from "../src/signer.js";
 import {
   type V09UserOperation,
   applyEstimatedGas,
@@ -38,7 +38,10 @@ describe("arbitrum one fork — v0.9 bundler", () => {
     const sender = await ctx.factory.counterfactualAddress(ctx.owner.address, saltSeed);
     await fundCounterfactual(ctx, sender, parseEther("1"));
 
-    const target = ctx.relayer.address;
+    // A neutral sink address: the relayer can't be used here because it also
+    // pays bundle gas and collects the beneficiary compensation, so its
+    // balance delta would not equal the transfer amount.
+    const target = new Wallet("0x" + "22".repeat(32)).address;
     const amount = parseEther("0.001");
     const callData = encodeExecute(target, amount, "0x");
 
@@ -73,7 +76,7 @@ describe("arbitrum one fork — v0.9 bundler", () => {
 
   it("eth_estimateUserOperationGas applies Arbitrum L1-data PVG buffer", async () => {
     const { op } = await buildOp(0xa1n);
-    op.signature = "0x" + "ee".repeat(65);
+    op.signature = DUMMY_SIGNATURE;
 
     const est = await ctx.bundler.estimateUserOperationGas(toRpcJson(op), ENTRY_POINT_V09);
 
@@ -88,7 +91,7 @@ describe("arbitrum one fork — v0.9 bundler", () => {
 
   it("eth_sendUserOperation completes on Arbitrum fork (deploy + transfer)", async () => {
     const { op, sender, target, amount } = await buildOp(0xa2n);
-    op.signature = "0x" + "ee".repeat(65);
+    op.signature = DUMMY_SIGNATURE;
     const est = await ctx.bundler.estimateUserOperationGas(toRpcJson(op), ENTRY_POINT_V09);
     const finalOp = applyEstimatedGas(op, est);
     finalOp.signature = await signUserOp(finalOp, ctx.owner, ENTRY_POINT_V09, ctx.chainId);
@@ -109,7 +112,7 @@ describe("arbitrum one fork — v0.9 bundler", () => {
 
   it("relayer transaction lands on the Arbitrum fork (L2-specific receipt format)", async () => {
     const { op } = await buildOp(0xa3n);
-    op.signature = "0x" + "ee".repeat(65);
+    op.signature = DUMMY_SIGNATURE;
     const est = await ctx.bundler.estimateUserOperationGas(toRpcJson(op), ENTRY_POINT_V09);
     const finalOp = applyEstimatedGas(op, est);
     finalOp.signature = await signUserOp(finalOp, ctx.owner, ENTRY_POINT_V09, ctx.chainId);

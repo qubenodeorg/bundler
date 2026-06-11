@@ -36,8 +36,13 @@ jobs:
           cache: npm
           cache-dependency-path: e2e/package-lock.json
 
+      # Pin a concrete version: resolving "stable" makes foundryup list
+      # releases via api.github.com, which gets rate-limited (403) on shared
+      # runners.
       - name: Install Foundry (anvil)
         uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.7.1
 
       - name: Cache v0.9 contract artifacts
         uses: actions/cache@v4

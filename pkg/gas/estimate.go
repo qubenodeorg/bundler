@@ -36,6 +36,7 @@ func isValidationOOG(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "AA40 over verificationGasLimit") ||
+		strings.Contains(err.Error(), "AA26 over verificationGasLimit") ||
 		strings.Contains(err.Error(), "AA41 too little verificationGas") ||
 		strings.Contains(err.Error(), "AA51 prefund below actualGasCost") ||
 		strings.Contains(err.Error(), "AA13 initCode failed or OOG") ||

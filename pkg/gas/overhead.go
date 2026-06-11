@@ -131,6 +131,21 @@ func NewDefaultOverheadV09() *Overhead {
 	}
 }
 
+// NewDefaultOverheadForVersion returns the Overhead matching the given
+// EntryPoint version.
+func NewDefaultOverheadForVersion(v userop.Version) *Overhead {
+	switch v {
+	case userop.V0_7:
+		return NewDefaultOverheadV07()
+	case userop.V0_8:
+		return NewDefaultOverheadV08()
+	case userop.V0_9:
+		return NewDefaultOverheadV09()
+	default:
+		return NewDefaultOverhead()
+	}
+}
+
 // SetCalcPreVerificationGasFunc allows a custom function to be defined that can control how it calculates
 // PVG. This is useful for networks that have different models for gas.
 func (ov *Overhead) SetCalcPreVerificationGasFunc(fn CalcPreVerificationGasFunc) {

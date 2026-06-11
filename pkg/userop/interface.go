@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"strings"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/pkg/userop/v06"
@@ -121,8 +122,24 @@ func DetectVersion(data map[string]any) Version {
 	return V0_6
 }
 
+// entryPointVersionOverrides pins versions for specific EntryPoint addresses,
+// taking precedence over the canonical address table below. Populated at
+// startup from the ERC4337_BUNDLER_ENTRYPOINT_VERSION override so that
+// non-canonical deployments (e.g. locally deployed test EntryPoints) resolve
+// to the configured version instead of falling back to v0.6.
+var entryPointVersionOverrides sync.Map
+
+// RegisterEntryPointVersion pins the version used for the given EntryPoint
+// address in DetectVersionFromEntryPoint.
+func RegisterEntryPointVersion(entryPoint common.Address, v Version) {
+	entryPointVersionOverrides.Store(strings.ToLower(entryPoint.Hex()), v)
+}
+
 // DetectVersionFromEntryPoint returns the version based on the EntryPoint address.
 func DetectVersionFromEntryPoint(entryPoint common.Address) Version {
+	if v, ok := entryPointVersionOverrides.Load(strings.ToLower(entryPoint.Hex())); ok {
+		return v.(Version)
+	}
 	switch strings.ToLower(entryPoint.Hex()) {
 	case "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789":
 		return V0_6

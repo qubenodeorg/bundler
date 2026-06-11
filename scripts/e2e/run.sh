@@ -137,6 +137,17 @@ run_chain() {
 
   ensure_artifacts
 
+  # Construct the v0.9 EntryPoint for real (CREATE2) so constructor-set
+  # immutables (senderCreator) are valid. On forks the canonical deployment is
+  # reused; unforked chains get the npm artifact's deterministic address.
+  local entrypoint
+  entrypoint=$(
+    cd "${E2E_DIR}" && \
+    E2E_ARTIFACTS_DIR="${ARTIFACTS_DIR}" \
+    npm run --silent deploy-entrypoint -- "http://127.0.0.1:${anvil_port}"
+  )
+  echo "using EntryPoint ${entrypoint}"
+
   # The bundler binary is built once at the script's top-level.
 
   # Configure the bundler.
@@ -155,9 +166,10 @@ run_chain() {
   ERC4337_BUNDLER_PRIVATE_KEY="${RELAYER_PK#0x}" \
   ERC4337_BUNDLER_PORT="${bundler_port}" \
   ERC4337_BUNDLER_DATA_DIRECTORY="${data_dir}" \
-  ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS="0x433709009B8330FDa32311DF1C2AFA402eD8D009" \
+  ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS="${entrypoint}" \
   ERC4337_BUNDLER_ENTRYPOINT_VERSION="v0.9" \
   ERC4337_BUNDLER_IS_ARB_STACK_NETWORK="${arb_flag}" \
+  ERC4337_BUNDLER_NATIVE_BUNDLER_COLLECTOR_TRACER="js" \
   ERC4337_BUNDLER_DEBUG_MODE="true" \
   ERC4337_BUNDLER_BENEFICIARY="0xa0Ee7A142d267C1f36714E4a8F75612F20a79720" \
   "${LOG_DIR}/qubenode-bundler" start --mode private \
@@ -169,6 +181,7 @@ run_chain() {
   (
     cd "${E2E_DIR}"
     E2E_CHAIN="${chain}" \
+    E2E_ENTRY_POINT="${entrypoint}" \
     E2E_ANVIL_URL="http://127.0.0.1:${anvil_port}" \
     E2E_BUNDLER_URL="http://127.0.0.1:${bundler_port}" \
     E2E_STATE_FILE="${REPO_ROOT}/.e2e-state.json" \

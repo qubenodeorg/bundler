@@ -67,10 +67,12 @@ func packAccountGasLimits(verificationGasLimit, callGasLimit *big.Int) [32]byte 
 }
 
 func packGasFees(maxFeePerGas, maxPriorityFeePerGas *big.Int) [32]byte {
+	// maxPriorityFeePerGas occupies the high 128 bits per
+	// UserOperationLib.unpackGasFees.
 	mf := new(big.Int).And(maxFeePerGas, maxUint128)
 	mp := new(big.Int).And(maxPriorityFeePerGas, maxUint128)
-	packed := new(big.Int).Lsh(mf, 128)
-	packed.Or(packed, mp)
+	packed := new(big.Int).Lsh(mp, 128)
+	packed.Or(packed, mf)
 	b := make([]byte, 32)
 	packed.FillBytes(b)
 	var arr [32]byte

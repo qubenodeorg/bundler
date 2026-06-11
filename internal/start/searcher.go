@@ -99,7 +99,7 @@ func SearcherMode() {
 		defer metricsCleanup()
 	}
 
-	ov := gas.NewDefaultOverhead()
+	ov := gas.NewDefaultOverheadForVersion(conf.EntryPointVersion)
 
 	mem, err := mempool.New(db)
 	if err != nil {

@@ -203,11 +203,13 @@ func (op *UserOperation) AccountGasLimits() [32]byte {
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 
+// GasFees packs maxPriorityFeePerGas (high 128 bits) and maxFeePerGas
+// (low 128 bits) per UserOperationLib.unpackGasFees.
 func (op *UserOperation) GasFees() [32]byte {
 	mf := new(big.Int).And(op.MaxFeePerGas, maxUint128)
 	mp := new(big.Int).And(op.MaxPriorityFeePerGas, maxUint128)
-	packed := new(big.Int).Lsh(mf, 128)
-	packed.Or(packed, mp)
+	packed := new(big.Int).Lsh(mp, 128)
+	packed.Or(packed, mf)
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 
@@ -292,13 +294,38 @@ func (op *UserOperation) PackForSignature() []byte {
 	return packed
 }
 
-// GetUserOpHash returns the hash of the userOp + entryPoint address + chainID.
+var (
+	// PackedUserOpTypeHash is UserOperationLib.PACKED_USEROP_TYPEHASH.
+	PackedUserOpTypeHash = crypto.Keccak256Hash([]byte(
+		"PackedUserOperation(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData)",
+	))
+
+	eip712DomainTypeHash = crypto.Keccak256Hash([]byte(
+		"EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+	))
+	domainNameHash    = crypto.Keccak256Hash([]byte("ERC4337"))
+	domainVersionHash = crypto.Keccak256Hash([]byte("1"))
+)
+
+// DomainSeparator computes the v0.8 EntryPoint's EIP-712 domain separator
+// (name "ERC4337", version "1", verifyingContract = the EntryPoint).
+func DomainSeparator(entryPoint common.Address, chainID *big.Int) [32]byte {
+	enc := make([]byte, 0, 160)
+	enc = append(enc, eip712DomainTypeHash.Bytes()...)
+	enc = append(enc, domainNameHash.Bytes()...)
+	enc = append(enc, domainVersionHash.Bytes()...)
+	enc = append(enc, common.LeftPadBytes(chainID.Bytes(), 32)...)
+	enc = append(enc, common.LeftPadBytes(entryPoint.Bytes(), 32)...)
+	var ds [32]byte
+	copy(ds[:], crypto.Keccak256(enc))
+	return ds
+}
+
+// GetUserOpHash returns the hash the v0.8 EntryPoint signs over: the ERC-712
+// typed-data hash of the packed operation (EntryPoint.getUserOpHash). v0.8
+// replaced the legacy keccak(hash || entryPoint || chainID) scheme.
 func (op *UserOperation) GetUserOpHash(entryPoint common.Address, chainID *big.Int) common.Hash {
-	return crypto.Keccak256Hash(
-		crypto.Keccak256(op.PackForSignature()),
-		common.LeftPadBytes(entryPoint.Bytes(), 32),
-		common.LeftPadBytes(chainID.Bytes(), 32),
-	)
+	return op.GetUserOpHashEIP712(DomainSeparator(entryPoint, chainID), PackedUserOpTypeHash)
 }
 
 // GetUserOpHashEIP712 computes the ERC-712 typed data hash.

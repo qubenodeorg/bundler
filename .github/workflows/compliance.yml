@@ -81,6 +81,11 @@ jobs:
         working-directory: bundler-spec-tests
         run: |
           pdm install
+          # Older spec-test branches pin a py-solc-x that downloads compilers
+          # from the retired solc-bin.ethereum.org domain; repoint it at
+          # binaries.soliditylang.org (same path layout). No-op on new pins.
+          sed -i 's|solc-bin.ethereum.org|binaries.soliditylang.org|g' \
+            .venv/lib/python*/site-packages/solcx/install.py
           cd spec && yarn install --frozen-lockfile && yarn build && cd ..
           cd @account-abstraction && yarn install --frozen-lockfile && cd ..
 
@@ -99,7 +104,9 @@ jobs:
             --http.api eth,net,web3,debug \
             --rpc.allow-unprotected-txs \
             --nodiscover --maxpeers 0 \
-            --miner.gaslimit 12000000
+            --miner.gaslimit 12000000 \
+            --miner.gasprice 0 \
+            --txpool.pricelimit 0
           for i in $(seq 1 30); do
             if curl -sf -o /dev/null -X POST -H 'content-type: application/json' \
               -d '{"jsonrpc":"2.0","id":1,"method":"web3_clientVersion","params":[]}' \

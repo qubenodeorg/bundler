@@ -51,7 +51,7 @@ func GetUserOperationByHash(
 		}
 
 		hex := hexutil.Encode(tx.Data())
-		if strings.HasPrefix(hex, "0x1fad948c") {
+		if strings.HasPrefix(hex, "0x765e827f") { // handleOps(PackedUserOperation[],address) selector (v0.7+)
 			data := common.Hex2Bytes(hex[10:])
 			ops, err := unpackPackedOps(data)
 			if err != nil {

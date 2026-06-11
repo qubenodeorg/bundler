@@ -13,7 +13,7 @@ import {
   EnvConfig,
   loadEnv,
 } from "./config.js";
-import { loadArtifact } from "./artifacts.js";
+import { ensureEntryPointDeployed } from "./deploy-entrypoint.js";
 
 export interface E2EContext {
   env: EnvConfig;
@@ -51,14 +51,20 @@ export async function setupE2EContext(): Promise<E2EContext> {
   return { env, provider, anvil, bundler, owner, relayer, factory, chainId };
 }
 
-// ensureEntryPointInstalled fast-paths when the address already has code (e.g.
-// a prior test in the same anvil session already injected it).
+// ensureEntryPointInstalled constructs the EntryPoint for real (CREATE2 via
+// the deterministic proxy) rather than anvil_setCode-ing deployedBytecode:
+// the constructor deploys the SenderCreator and bakes its address into an
+// immutable, so injected bytecode would have senderCreator == address(0) and
+// every account deployment would revert. The resulting address must match the
+// one the bundler was started with (E2E_ENTRY_POINT, plumbed by run.sh).
 async function ensureEntryPointInstalled(anvil: AnvilCheats): Promise<void> {
-  const provider = anvil.provider;
-  const existing = await provider.getCode(ENTRY_POINT_V09);
-  if (existing && existing !== "0x") return;
-  const art = loadArtifact("EntryPoint");
-  await anvil.setCode(ENTRY_POINT_V09, art.deployedBytecode);
+  const deployed = await ensureEntryPointDeployed(anvil.provider);
+  if (deployed.toLowerCase() !== ENTRY_POINT_V09.toLowerCase()) {
+    throw new Error(
+      `EntryPoint deployed at ${deployed} but tests/bundler expect ${ENTRY_POINT_V09}; ` +
+        `is E2E_ENTRY_POINT out of sync with scripts/e2e/run.sh?`,
+    );
+  }
 }
 
 // ensureFactoryDeployed reads the deployed factory address from a side-channel

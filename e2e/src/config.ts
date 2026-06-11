@@ -29,12 +29,31 @@ export const CHAINS: Record<ChainName, ChainConfig> = {
   },
 };
 
-// Canonical v0.9 EntryPoint address. The e2e bootstrap script installs the
-// deployed bytecode at this address using anvil_setCode so the tests can
-// pretend the official deployment exists on the forked chain.
-export const ENTRY_POINT_V09 = getAddress(
+// Canonical v0.9 EntryPoint address (account-abstraction v0.9.0 deterministic
+// deployment). Forked chains already have it; unforked runs CREATE2-deploy
+// the npm artifact's bytecode instead, which constructs at a different (but
+// equally deterministic) address — see deploy-entrypoint.ts. The actual
+// address for a run is plumbed through the E2E_ENTRY_POINT env var.
+export const CANONICAL_ENTRY_POINT_V09 = getAddress(
   "0x433709009B8330FDa32311DF1C2AFA402eD8D009",
 );
+
+export const ENTRY_POINT_V09 = getAddress(
+  process.env.E2E_ENTRY_POINT ?? CANONICAL_ENTRY_POINT_V09,
+);
+
+// Deterministic-deployment proxy (Arachnid CREATE2 proxy). Anvil predeploys
+// it at genesis; if absent its runtime code is installed via anvil_setCode.
+export const CREATE2_PROXY = getAddress(
+  "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+);
+export const CREATE2_PROXY_RUNTIME =
+  "0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf3";
+
+// Salt used by account-abstraction v0.9.0 for the EntryPoint deterministic
+// deployment (hardhat.config.ts SALT).
+export const ENTRY_POINT_V09_SALT =
+  "0x7702864008ddeab30aa67b7adc3d2653bc8d162714b1fe8fe4582df814f3bf61";
 
 // Anvil's deterministic account #0 — funded with 10000 ETH by default. Used as
 // the EOA owner that signs user operations in the tests.

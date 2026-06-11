@@ -92,7 +92,7 @@ func PrivateMode() {
 		defer metricsCleanup()
 	}
 
-	ov := gas.NewDefaultOverhead()
+	ov := gas.NewDefaultOverheadForVersion(conf.EntryPointVersion)
 	if conf.IsArbStackNetwork || config.ArbStackChains.Contains(chain.Uint64()) {
 		// ov.SetCalcPreVerificationGasFunc(gas.CalcArbitrumPVGWithEthClient(rpc, conf.SupportedEntryPoints[0]))
 		ov.SetPreVerificationGasBufferFactor(16)

@@ -3,6 +3,7 @@ import {
   concat,
   keccak256,
   toBeHex,
+  toUtf8Bytes,
   zeroPadValue,
 } from "ethers";
 
@@ -50,8 +51,10 @@ export function accountGasLimits(op: V09UserOperation): string {
   return packUint128Pair(op.verificationGasLimit, op.callGasLimit);
 }
 
+// gasFees packs maxPriorityFeePerGas (high 128 bits) and maxFeePerGas
+// (low 128 bits) per UserOperationLib.unpackGasFees.
 export function gasFees(op: V09UserOperation): string {
-  return packUint128Pair(op.maxFeePerGas, op.maxPriorityFeePerGas);
+  return packUint128Pair(op.maxPriorityFeePerGas, op.maxFeePerGas);
 }
 
 export function packInitCode(op: V09UserOperation): string {
@@ -100,20 +103,48 @@ export function packForSignature(op: V09UserOperation): string {
   );
 }
 
-// getUserOpHash mirrors v09.UserOperation.GetUserOpHash. Note: paymasterSignature
-// is intentionally excluded from the hash per v0.9 spec, so two ops differing
-// only in paymasterSignature MUST hash to the same value.
+// PACKED_USEROP_TYPEHASH / EIP-712 domain constants mirroring
+// UserOperationLib.sol — the v0.8+ EntryPoint hashes userOps as ERC-712
+// typed data (domain name "ERC4337", version "1", verifyingContract = EP).
+const PACKED_USEROP_TYPEHASH = keccak256(
+  toUtf8Bytes(
+    "PackedUserOperation(address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData)",
+  ),
+);
+const EIP712_DOMAIN_TYPEHASH = keccak256(
+  toUtf8Bytes(
+    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)",
+  ),
+);
+const DOMAIN_NAME_HASH = keccak256(toUtf8Bytes("ERC4337"));
+const DOMAIN_VERSION_HASH = keccak256(toUtf8Bytes("1"));
+
+export function domainSeparator(entryPoint: string, chainId: bigint): string {
+  return keccak256(
+    concat([
+      EIP712_DOMAIN_TYPEHASH,
+      DOMAIN_NAME_HASH,
+      DOMAIN_VERSION_HASH,
+      zeroPadValue(toBeHex(chainId), 32),
+      zeroPadValue(entryPoint, 32),
+    ]),
+  );
+}
+
+// getUserOpHash mirrors v09.UserOperation.GetUserOpHash (the EntryPoint's
+// ERC-712 typed-data hash). Note: paymasterSignature is intentionally
+// excluded from the hash per v0.9 spec, so two ops differing only in
+// paymasterSignature MUST hash to the same value.
 export function getUserOpHash(
   op: V09UserOperation,
   entryPoint: string,
   chainId: bigint,
 ): string {
+  const structHash = keccak256(
+    concat([PACKED_USEROP_TYPEHASH, packForSignature(op)]),
+  );
   return keccak256(
-    concat([
-      keccak256(packForSignature(op)),
-      zeroPadValue(entryPoint, 32),
-      zeroPadValue(toBeHex(chainId), 32),
-    ]),
+    concat(["0x1901", domainSeparator(entryPoint, chainId), structHash]),
   );
 }
 

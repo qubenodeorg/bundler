@@ -192,11 +192,13 @@ func (op *UserOperation) AccountGasLimits() [32]byte {
 }
 
 // GasFees packs maxFeePerGas and maxPriorityFeePerGas into bytes32.
+// GasFees packs maxPriorityFeePerGas (high 128 bits) and maxFeePerGas
+// (low 128 bits) per UserOperationLib.unpackGasFees.
 func (op *UserOperation) GasFees() [32]byte {
 	mf := new(big.Int).And(op.MaxFeePerGas, maxUint128)
 	mp := new(big.Int).And(op.MaxPriorityFeePerGas, maxUint128)
-	packed := new(big.Int).Lsh(mf, 128)
-	packed.Or(packed, mp)
+	packed := new(big.Int).Lsh(mp, 128)
+	packed.Or(packed, mf)
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 

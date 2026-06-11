@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { parseEther } from "ethers";
+import { Wallet, parseEther } from "ethers";
 
 import { setupE2EContext, fundCounterfactual, type E2EContext } from "../src/fixture.js";
 import { encodeExecute } from "../src/accounts.js";
 import { ENTRY_POINT_V09 } from "../src/config.js";
-import { signEip7702Authorization, signUserOp } from "../src/signer.js";
+import { DUMMY_SIGNATURE, signEip7702Authorization, signUserOp } from "../src/signer.js";
 import {
   type V09UserOperation,
   applyEstimatedGas,
@@ -39,7 +39,10 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
     const sender = await ctx.factory.counterfactualAddress(ctx.owner.address, salt);
     await fundCounterfactual(ctx, sender, parseEther("1"));
 
-    const transferTarget = ctx.relayer.address;
+    // A neutral sink address: the relayer can't be used here because it also
+    // pays bundle gas and collects the beneficiary compensation, so its
+    // balance delta would not equal the transfer amount.
+    const transferTarget = new Wallet("0x" + "22".repeat(32)).address;
     const transferAmount = parseEther("0.001");
     const callData = encodeExecute(transferTarget, transferAmount, "0x");
 
@@ -74,7 +77,7 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
 
   it("eth_estimateUserOperationGas returns v0.9 fields including paymaster gas limits", async () => {
     const { op } = await buildDeployAndTransferOp(0xe1n);
-    op.signature = "0x" + "ee".repeat(65); // placeholder signature for estimation
+    op.signature = DUMMY_SIGNATURE;
 
     const est = await ctx.bundler.estimateUserOperationGas(
       toRpcJson(op),
@@ -96,7 +99,7 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
       await buildDeployAndTransferOp(0xe2n);
 
     // Estimate gas, then re-sign with the final values.
-    op.signature = "0x" + "ee".repeat(65);
+    op.signature = DUMMY_SIGNATURE;
     const est = await ctx.bundler.estimateUserOperationGas(toRpcJson(op), ENTRY_POINT_V09);
     const finalOp = applyEstimatedGas(op, est);
     finalOp.signature = await signUserOp(finalOp, ctx.owner, ENTRY_POINT_V09, ctx.chainId);
@@ -131,7 +134,7 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
 
   it("paymaster signature flow — pm_sponsorUserOperation returns paymasterSignature separately", async () => {
     const { op } = await buildDeployAndTransferOp(0xe3n);
-    op.signature = "0x" + "ee".repeat(65);
+    op.signature = DUMMY_SIGNATURE;
 
     let response: Record<string, string> | undefined;
     try {
@@ -197,7 +200,7 @@ describe("ethereum mainnet fork — v0.9 bundler", () => {
       paymasterVerificationGasLimit: 0n,
       paymasterPostOpGasLimit: 0n,
       paymasterData: "0x",
-      signature: "0x" + "ee".repeat(65),
+      signature: DUMMY_SIGNATURE,
       eip7702Auth,
     };
 
