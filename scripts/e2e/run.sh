@@ -115,9 +115,13 @@ wait_bundler() {
 }
 
 ensure_artifacts() {
+  # Install deps unconditionally: in CI the artifacts directory can be
+  # restored from cache, but node_modules never is, and the deploy and test
+  # steps below need it either way.
+  (cd "${E2E_DIR}" && npm install --silent)
   if [[ ! -f "${ARTIFACTS_DIR}/EntryPoint.json" ]]; then
     echo "fetching v0.9 contract artifacts"
-    (cd "${E2E_DIR}" && npm install --silent && npm run --silent fetch-artifacts)
+    (cd "${E2E_DIR}" && npm run --silent fetch-artifacts)
   fi
 }
 
