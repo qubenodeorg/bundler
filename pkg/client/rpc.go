@@ -115,6 +115,15 @@ func (r *RpcAdapter) Debug_bundler_setReputation(entries []any, ep string) (stri
 	return r.debug.SetReputation(entries, ep)
 }
 
+// Debug_bundler_getStakeStatus routes method calls to *Debug.GetStakeStatus.
+func (r *RpcAdapter) Debug_bundler_getStakeStatus(addr string, ep string) (map[string]any, error) {
+	if r.debug == nil {
+		return nil, errors.New("rpc: debug mode is not enabled")
+	}
+
+	return r.debug.GetStakeStatus(addr, ep)
+}
+
 // Debug_bundler_dumpReputation routes method calls to *Debug.DumpReputation.
 func (r *RpcAdapter) Debug_bundler_dumpReputation(ep string) ([]map[string]any, error) {
 	if r.debug == nil {
@@ -122,6 +131,15 @@ func (r *RpcAdapter) Debug_bundler_dumpReputation(ep string) ([]map[string]any, 
 	}
 
 	return r.debug.DumpReputation(ep)
+}
+
+// Debug_bundler_clearReputation routes method calls to *Debug.ClearReputation.
+func (r *RpcAdapter) Debug_bundler_clearReputation() (string, error) {
+	if r.debug == nil {
+		return "", errors.New("rpc: debug mode is not enabled")
+	}
+
+	return r.debug.ClearReputation()
 }
 
 func (r *RpcAdapter) Eth_call(args interface{}, blockNumber string) ([]byte, error) {

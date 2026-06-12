@@ -32,7 +32,8 @@ func ValidateSender(op *userop.UserOperation, gc GetCodeFunc) error {
 }
 
 // ValidateSenderV07 validates the sender for v0.7+ UserOperations.
-// Uses GetFactory() to determine if initCode is present.
+// Uses GetFactory() to determine if initCode is present. An undeployed sender
+// is also fine with an EIP-7702 authorization, which delegates code to it.
 func ValidateSenderV07(op userop.UserOperationInterface, gc GetCodeFunc) error {
 	bytecode, err := gc(op.GetSender())
 	if err != nil {
@@ -40,10 +41,11 @@ func ValidateSenderV07(op userop.UserOperationInterface, gc GetCodeFunc) error {
 	}
 
 	hasFactory := op.GetFactory() != zeroAddress
-	if len(bytecode) == 0 && !hasFactory {
+	hasAuth := op.GetEIP7702Auth() != nil
+	if len(bytecode) == 0 && !hasFactory && !hasAuth {
 		return ErrSenderNotDeployed
 	}
-	if len(bytecode) > 0 && hasFactory {
+	if len(bytecode) > 0 && hasFactory && !hasAuth {
 		return ErrSenderAlreadyDeploy
 	}
 
@@ -59,7 +61,8 @@ func ValidateSenderV09(op userop.UserOperationInterface, gc GetCodeFunc) error {
 	}
 
 	hasFactory := op.GetFactory() != zeroAddress
-	if len(bytecode) == 0 && !hasFactory {
+	hasAuth := op.GetEIP7702Auth() != nil
+	if len(bytecode) == 0 && !hasFactory && !hasAuth {
 		return ErrSenderNotDeployed
 	}
 	// v0.9: ALLOW initCode with existing accounts (no ErrSenderAlreadyDeploy)

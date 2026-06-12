@@ -47,6 +47,12 @@ type CallFromEntryPointInfo struct {
 	TSTORE float64 `json:"tstore,omitempty"`
 	TLOAD  float64 `json:"tload,omitempty"`
 
+	// CreateOpcodes attributes CREATE/CREATE2 usage to the storage-context
+	// address that executed it, so the OP-032/EREP-060 rules can distinguish
+	// the sender itself from a utility contract. Nil when the trace source
+	// (e.g. the JS tracer) does not provide per-frame attribution.
+	CreateOpcodes map[common.Address]Counts `json:"createOpcodes,omitempty"`
+
 	// v0.8+ EIP-7702 flag set on the top-level handleOps call when present.
 	EIP7702Auth bool `json:"eip7702Auth,omitempty"`
 

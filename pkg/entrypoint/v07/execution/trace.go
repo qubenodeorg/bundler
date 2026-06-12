@@ -57,7 +57,9 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 		return nil, err
 	}
 
-	beneficiary := common.HexToAddress("0x")
+	// handleOps reverts AA90 for a zero beneficiary even when the op is valid,
+	// so trace with a dummy non-zero beneficiary.
+	beneficiary := common.BigToAddress(common.Big1)
 	tx, err := ep.HandleOps(auth, []epv07.PackedUserOperation{*packedOp}, beneficiary)
 	if err != nil {
 		return nil, err

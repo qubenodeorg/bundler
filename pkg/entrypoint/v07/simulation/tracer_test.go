@@ -10,8 +10,8 @@ import (
 )
 
 // TestProcessTraceResult_TSTOREBanned_Staked verifies that the v0.7+ tracer
-// captures TSTORE counts and the simulation pipeline flags it as a banned
-// opcode (per OP-070).
+// captures TSTORE counts and (per OP-070) the opcode itself is allowed;
+// transient slot access is validated by the storage rules instead.
 func TestProcessTraceResult_TSTOREBanned_StakedV07(t *testing.T) {
 	op := validMockOp()
 	stakes := mockStakes()
@@ -20,12 +20,12 @@ func TestProcessTraceResult_TSTOREBanned_StakedV07(t *testing.T) {
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (TSTORE banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TSTORE follows storage rules, not banned)", err)
 	}
 }
 
-// TestProcessTraceResult_TLOADBanned_Staked verifies TLOAD is also banned.
+// TestProcessTraceResult_TLOADBanned_Staked verifies TLOAD is also allowed.
 func TestProcessTraceResult_TLOADBanned_StakedV07(t *testing.T) {
 	op := validMockOp()
 	stakes := mockStakes()
@@ -34,8 +34,8 @@ func TestProcessTraceResult_TLOADBanned_StakedV07(t *testing.T) {
 	res.CallsFromEntryPoint[0].TLOAD = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (TLOAD banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TLOAD follows storage rules, not banned)", err)
 	}
 }
 

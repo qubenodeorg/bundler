@@ -9,7 +9,7 @@ import (
 	"github.com/zarbanio/bundler/pkg/tracer"
 )
 
-// TestProcessTraceResult_TSTOREBannedV08 verifies v0.8 tracer captures
+// TestProcessTraceResult_TSTOREBannedV08 verifies the v0.8 tracer captures
 // TSTORE and the simulation pipeline rejects it (per OP-070).
 func TestProcessTraceResult_TSTOREBannedV08(t *testing.T) {
 	op := validMockOpV08()
@@ -19,8 +19,8 @@ func TestProcessTraceResult_TSTOREBannedV08(t *testing.T) {
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (TSTORE banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TSTORE follows storage rules, not banned)", err)
 	}
 }
 
@@ -33,8 +33,8 @@ func TestProcessTraceResult_TLOADBannedV08(t *testing.T) {
 	res.CallsFromEntryPoint[0].TLOAD = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (TLOAD banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TLOAD follows storage rules, not banned)", err)
 	}
 }
 
@@ -77,7 +77,8 @@ func TestProcessTraceResult_NewFields_RoundTripV08(t *testing.T) {
 }
 
 // TestProcessTraceResult_UnstakedBannedTSTOREV08 ensures the v0.8 pipeline
-// also rejects TSTORE for unstaked entities (matches v0.6 behavior).
+// allows the TSTORE opcode for unstaked entities; per OP-070 transient
+// storage is governed by the storage slot access rules.
 func TestProcessTraceResult_UnstakedBannedTSTOREV08(t *testing.T) {
 	op := validMockOpV08()
 	stakes := simutils.EntityStakes{
@@ -88,7 +89,7 @@ func TestProcessTraceResult_UnstakedBannedTSTOREV08(t *testing.T) {
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (unstaked TSTORE banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TSTORE follows storage rules, not banned)", err)
 	}
 }

@@ -12,9 +12,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	"github.com/zarbanio/bundler/pkg/entrypoint/v09"
+	v09reverts "github.com/zarbanio/bundler/pkg/entrypoint/v09/reverts"
 	"github.com/zarbanio/bundler/pkg/signer"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
@@ -22,6 +24,7 @@ import (
 type Opts struct {
 	EOA         *signer.EOA
 	Eth         *ethclient.Client
+	Rpc         *rpc.Client
 	ChainID     *big.Int
 	EntryPoint  common.Address
 	Batch       []*userop.UserOperation
@@ -97,23 +100,36 @@ func EstimateHandleOpsGas(opts *Opts) (gas uint64, revert *reverts.FailedOpRever
 		return 0, nil, err
 	}
 
-	est, err := opts.Eth.EstimateGas(context.Background(), ethereum.CallMsg{
-		From:       opts.EOA.Address,
-		To:         tx.To(),
-		Gas:        tx.Gas(),
-		GasPrice:   tx.GasPrice(),
-		GasFeeCap:  tx.GasFeeCap(),
-		GasTipCap:  tx.GasTipCap(),
-		Value:      tx.Value(),
-		Data:       tx.Data(),
-		AccessList: tx.AccessList(),
-	})
+	var est uint64
+	if BatchHasAuth(opts.Batch) {
+		est, err = estimateHandleOps7702Gas(opts, tx.Data())
+	} else {
+		est, err = opts.Eth.EstimateGas(context.Background(), ethereum.CallMsg{
+			From:       opts.EOA.Address,
+			To:         tx.To(),
+			Gas:        tx.Gas(),
+			GasPrice:   tx.GasPrice(),
+			GasFeeCap:  tx.GasFeeCap(),
+			GasTipCap:  tx.GasTipCap(),
+			Value:      tx.Value(),
+			Data:       tx.Data(),
+			AccessList: tx.AccessList(),
+		})
+	}
 	if err != nil {
-		revert, err := reverts.NewFailedOp(err)
-		if err != nil {
-			return 0, nil, err
+		if revert, foErr := reverts.NewFailedOp(err); foErr == nil {
+			return 0, revert, nil
 		}
-		return 0, revert, nil
+		// v0.7+ wraps an entity revert during validation as FailedOpWithRevert;
+		// surface it as a FailedOpRevert so the relayer can drop the right op.
+		if fo, foErr := v09reverts.NewFailedOpWithRevert(err); foErr == nil {
+			reason := fo.Reason
+			if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+				reason = reason + ": " + inner
+			}
+			return 0, &reverts.FailedOpRevert{OpIndex: fo.OpIndex, Reason: reason}, nil
+		}
+		return 0, nil, err
 	}
 	return est, nil, nil
 }

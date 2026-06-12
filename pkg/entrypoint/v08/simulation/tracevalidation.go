@@ -38,6 +38,9 @@ type TraceInput struct {
 type TraceOutput struct {
 	TouchedContracts []common.Address
 	AltMempoolIds    []string
+	// Trace is the raw collector output the validation rules were evaluated
+	// against; batch-level cross-op rules (e.g. STO-041) consume it.
+	Trace *tracer.BundlerCollectorReturn
 }
 
 func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
@@ -72,6 +75,11 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 	opts := utils.TraceCallOpts{
 		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), nil),
 	}
+	if in.DelegateAddress != (common.Address{}) {
+		// Run the trace as if the sender's EIP-7702 delegation were applied.
+		code := append([]byte{0xef, 0x01, 0x00}, in.DelegateAddress.Bytes()...)
+		opts.StateOverrides = state.WithCodeOverride(in.Op.Sender, code, opts.StateOverrides)
+	}
 
 	var res *tracer.BundlerCollectorReturn
 	if tracer.IsNativeCollector(in.Tracer) {
@@ -100,7 +108,36 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		res = &ret
 	}
 
-	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, res, in.DelegateAddress)
+	return ProcessTraceResultWithRules(
+		in.Op, in.EntryPoint, in.Stakes, res, in.DelegateAddress, in.IsRIP7212Supported, in.AltMempools,
+	)
+}
+
+// ProcessTraceResultWithRules runs ProcessTraceResult and then the shared
+// per-entity ERC-7562 rules (CREATE2 restrictions and storage slot access).
+func ProcessTraceResultWithRules(
+	op *userop.UserOperation,
+	entryPoint common.Address,
+	stakes simutils.EntityStakes,
+	res *tracer.BundlerCollectorReturn,
+	delegateAddr common.Address,
+	isRIP7212Supported bool,
+	alt *altmempools.Directory,
+) (*TraceOutput, error) {
+	out, err := ProcessTraceResult(op, entryPoint, stakes, res, delegateAddr)
+	if err != nil {
+		return nil, err
+	}
+	knownEntity, err := simutils.NewKnownEntity(op, res, stakes, delegateAddr)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := simutils.ValidateEntityRules(userop.V0_8, op, entryPoint, isRIP7212Supported, alt, stakes, res, knownEntity)
+	if err != nil {
+		return nil, err
+	}
+	out.AltMempoolIds = append(out.AltMempoolIds, ids...)
+	return out, nil
 }
 
 func ProcessTraceResult(
@@ -140,7 +177,7 @@ func ProcessTraceResult(
 
 	callStack := simutils.NewCallStack(res.Calls)
 	for _, call := range callStack {
-		if call.Method == methods.ValidatePaymasterUserOpSelector {
+		if call.Method == methods.PackedValidatePaymasterUserOpSelector {
 			out, err := methods.DecodeValidatePaymasterUserOpOutput(call.Return)
 			if err != nil {
 				return nil, fmt.Errorf("unexpected tracing result: %s", err)
@@ -165,5 +202,6 @@ func ProcessTraceResult(
 	return &TraceOutput{
 		TouchedContracts: ic.ToSlice(),
 		AltMempoolIds:    altMempoolIds,
+		Trace:            res,
 	}, nil
 }

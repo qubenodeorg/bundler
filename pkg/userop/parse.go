@@ -89,6 +89,19 @@ func validateBigIntType(field reflect.Value) interface{} {
 func New(data map[string]any) (*UserOperation, error) {
 	var op UserOperation
 
+	// EIP7702Auth is an in-memory carrier tagged mapstructure:"-", but the
+	// decoder's ErrorUnset still demands a map entry for it (mapstructure does
+	// not skip "-" when decoding). Satisfy it with a nil placeholder on a copy
+	// so the caller's map is left untouched.
+	if _, ok := data["-"]; !ok {
+		d := make(map[string]any, len(data)+1)
+		for k, v := range data {
+			d[k] = v
+		}
+		d["-"] = nil
+		data = d
+	}
+
 	// Convert map to struct
 	config := &mapstructure.DecoderConfig{
 		DecodeHook: decodeOpTypes,

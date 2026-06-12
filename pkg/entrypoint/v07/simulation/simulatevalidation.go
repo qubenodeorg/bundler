@@ -107,12 +107,15 @@ func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
 		return nil, err
 	}
 
-	beneficiary := common.Address{}
+	// A zero beneficiary makes handleOps revert AA90 even for valid ops, so a
+	// dummy non-zero beneficiary lets a clean return signal that validation
+	// passed (v0.7+ has no on-chain ValidationResult to decode).
+	beneficiary := common.BigToAddress(common.Big1)
 	var res []interface{}
 	rawCaller := &epv07.V07Raw{Contract: ep}
 	err = rawCaller.Call(nil, &res, "handleOps", []epv07.PackedUserOperation{*packedOp}, beneficiary)
 	if err == nil {
-		return nil, fmt.Errorf("unexpected result from handleOps (expected revert)")
+		return &SimulateOutput{}, nil
 	}
 
 	if sim, simErr := v07reverts.NewValidationResult(err); simErr == nil {
@@ -120,11 +123,15 @@ func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
 	}
 
 	if fo, foErr := v07reverts.NewFailedOpWithRevert(err); foErr == nil {
-		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		reason := fo.Reason
+		if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+			reason = fmt.Sprintf("%s: %s", reason, inner)
+		}
+		return nil, errors.NewRPCError(reverts.RPCErrorCodeForFailedOp(fo.Reason), reason, fo)
 	}
 
 	if fo, foErr := reverts.NewFailedOp(err); foErr == nil {
-		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		return nil, errors.NewRPCError(reverts.RPCErrorCodeForFailedOp(fo.Reason), fo.Reason, fo)
 	}
 
 	return nil, err

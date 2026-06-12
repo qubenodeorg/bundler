@@ -37,6 +37,9 @@ type TraceInput struct {
 type TraceOutput struct {
 	TouchedContracts []common.Address
 	AltMempoolIds    []string
+	// Trace is the raw collector output the validation rules were evaluated
+	// against; batch-level cross-op rules (e.g. STO-041) consume it.
+	Trace *tracer.BundlerCollectorReturn
 }
 
 // TraceSimulateValidation makes a debug_traceCall to Entrypoint.simulateValidation(userop) and returns
@@ -52,7 +55,7 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 	}
 	auth.GasLimit = math.MaxUint64
 	auth.NoSend = true
-	tx, err := ep.SimulateValidation(auth, entrypoint.UserOperation(*in.Op))
+	tx, err := ep.SimulateValidation(auth, entrypoint.UserOperation(in.Op.Core()))
 	if err != nil {
 		return nil, err
 	}
@@ -120,41 +123,13 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		}
 	}
 
-	create2Count, ok := knownEntity["factory"].Info.Opcodes[create2OpCode]
-	if ok && (create2Count > 1 || len(in.Op.InitCode) == 0) {
-		return nil, fmt.Errorf("factory with too many %s", create2OpCode)
+	ids, err := ValidateEntityRules(
+		userop.V0_6, in.Op, in.EntryPoint, in.IsRIP7212Supported, in.AltMempools, in.Stakes, res, knownEntity,
+	)
+	if err != nil {
+		return nil, err
 	}
-	_, ok = knownEntity["account"].Info.Opcodes[create2OpCode]
-	if ok {
-		return nil, fmt.Errorf("account uses banned opcode: %s", create2OpCode)
-	}
-	_, ok = knownEntity["paymaster"].Info.Opcodes[create2OpCode]
-	if ok {
-		return nil, fmt.Errorf("paymaster uses banned opcode: %s", create2OpCode)
-	}
-
-	slotsByEntity := newStorageSlotsByEntity(in.Stakes, res.Keccak)
-	for title, entity := range knownEntity {
-		v := &storageSlotsValidator{
-			Op:                    in.Op,
-			EntryPoint:            in.EntryPoint,
-			IsRIP7212Supported:    in.IsRIP7212Supported,
-			AltMempools:           in.AltMempools,
-			SenderSlots:           slotsByEntity[in.Op.Sender],
-			FactoryIsStaked:       knownEntity["factory"].IsStaked,
-			EntityName:            title,
-			EntityAddr:            entity.Address,
-			EntityAccessMap:       entity.Info.Access,
-			EntityContractSizeMap: entity.Info.ContractSize,
-			EntitySlots:           slotsByEntity[entity.Address],
-			EntityIsStaked:        entity.IsStaked,
-		}
-		if ids, err := v.Process(); err != nil {
-			return nil, err
-		} else {
-			altMempoolIds = append(altMempoolIds, ids...)
-		}
-	}
+	altMempoolIds = append(altMempoolIds, ids...)
 
 	callStack := newCallStack(res.Calls)
 	for _, call := range callStack {
@@ -188,5 +163,6 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 	return &TraceOutput{
 		TouchedContracts: ic.ToSlice(),
 		AltMempoolIds:    altMempoolIds,
+		Trace:            res,
 	}, nil
 }

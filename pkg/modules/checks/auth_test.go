@@ -7,10 +7,22 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/zarbanio/bundler/pkg/userop"
 	v08 "github.com/zarbanio/bundler/pkg/userop/v08"
 	v09 "github.com/zarbanio/bundler/pkg/userop/v09"
 )
+
+// eip7702AuthHash computes the EIP-7702 authorization hash:
+// keccak256(0x05 || rlp([chain_id, address, nonce])).
+func eip7702AuthHash(t *testing.T, chainID *big.Int, address common.Address, nonce *big.Int) common.Hash {
+	t.Helper()
+	payload, err := rlp.EncodeToBytes([]interface{}{chainID, address, nonce})
+	if err != nil {
+		t.Fatalf("rlp encode: %v", err)
+	}
+	return crypto.Keccak256Hash(append([]byte{0x05}, payload...))
+}
 
 type mockAuthOp struct {
 	userop.UserOperationInterface
@@ -83,18 +95,7 @@ func TestValidateEIP7702Auth_ValidSignature(t *testing.T) {
 	delegateAddr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
 	nonce := big.NewInt(0)
 
-	// Compute EIP-7702 auth hash
-	chainIDBytes := common.LeftPadBytes(chainID.Bytes(), 32)
-	addrBytes := common.LeftPadBytes(delegateAddr.Bytes(), 32)
-	nonceBytes := common.LeftPadBytes(nonce.Bytes(), 32)
-
-	msg := make([]byte, 0, 1+1+32+32+32)
-	msg = append(msg, 0x05)
-	msg = append(msg, 0x00)
-	msg = append(msg, chainIDBytes...)
-	msg = append(msg, addrBytes...)
-	msg = append(msg, nonceBytes...)
-	hash := crypto.Keccak256Hash(msg)
+	hash := eip7702AuthHash(t, chainID, delegateAddr, nonce)
 
 	// Sign the hash
 	sig, err := crypto.Sign(hash.Bytes(), pk)
@@ -132,17 +133,7 @@ func TestValidateEIP7702Auth_WrongSigner(t *testing.T) {
 	delegateAddr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
 	nonce := big.NewInt(0)
 
-	chainIDBytes := common.LeftPadBytes(chainID.Bytes(), 32)
-	addrBytes := common.LeftPadBytes(delegateAddr.Bytes(), 32)
-	nonceBytes := common.LeftPadBytes(nonce.Bytes(), 32)
-
-	msg := make([]byte, 0, 1+1+32+32+32)
-	msg = append(msg, 0x05)
-	msg = append(msg, 0x00)
-	msg = append(msg, chainIDBytes...)
-	msg = append(msg, addrBytes...)
-	msg = append(msg, nonceBytes...)
-	hash := crypto.Keccak256Hash(msg)
+	hash := eip7702AuthHash(t, chainID, delegateAddr, nonce)
 
 	sig, _ := crypto.Sign(hash.Bytes(), pk1)
 	r := new(big.Int).SetBytes(sig[:32])
@@ -202,17 +193,7 @@ func TestRecoverEIP7702Signer_YParityNormalization(t *testing.T) {
 	delegateAddr := common.HexToAddress("0xABCDABCDABCDABCDABCDABCDABCDABCDABCDABCD")
 	nonce := big.NewInt(0)
 
-	chainIDBytes := common.LeftPadBytes(chainID.Bytes(), 32)
-	addrBytes := common.LeftPadBytes(delegateAddr.Bytes(), 32)
-	nonceBytes := common.LeftPadBytes(nonce.Bytes(), 32)
-
-	msg := make([]byte, 0, 1+1+32+32+32)
-	msg = append(msg, 0x05)
-	msg = append(msg, 0x00)
-	msg = append(msg, chainIDBytes...)
-	msg = append(msg, addrBytes...)
-	msg = append(msg, nonceBytes...)
-	hash := crypto.Keccak256Hash(msg)
+	hash := eip7702AuthHash(t, chainID, delegateAddr, nonce)
 
 	sig, _ := crypto.Sign(hash.Bytes(), pk)
 	r := new(big.Int).SetBytes(sig[:32])

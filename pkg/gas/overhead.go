@@ -248,8 +248,13 @@ func (ov *Overhead) CalcPreVerificationGas(op userop.UserOperationInterface) (*b
 		tmpPacked = vop.Op.Pack()
 	}
 
-	batchOv := (ov.intrinsicFixed / ov.minBundleSize) + ov.calcCallDataCost(tmpPacked)
-	pvg := batchOv + ov.calcPerUserOpCost(tmpPacked)
+	var pvg float64
+	if ov.version == userop.V0_6 {
+		batchOv := (ov.intrinsicFixed / ov.minBundleSize) + ov.calcCallDataCost(tmpPacked)
+		pvg = batchOv + ov.calcPerUserOpCost(tmpPacked)
+	} else {
+		pvg = ov.calcPreVerificationGasV07(op, tmpPacked)
+	}
 	static := big.NewInt(int64(math.Round(pvg)))
 
 	g, err := ov.calcPVGFunc(op, static)
@@ -260,6 +265,76 @@ func (ov *Overhead) CalcPreVerificationGas(op userop.UserOperationInterface) (*b
 		return g, nil
 	}
 	return static, nil
+}
+
+// Constants mirroring eth-infinitism's PreVerificationGasCalculator MainnetConfig,
+// used for the v0.7+ preVerificationGas model including the EIP-7623 calldata
+// floor pricing.
+const (
+	pvgFixedGasOverhead             = 9830
+	pvgPerUserOpGasOverhead         = 7260
+	pvgPerUserOpWordGasOverhead     = 9.5
+	pvgExecuteUserOpGasOverhead     = 1610
+	pvgExecuteUserOpPerWordOverhead = 8.2
+	pvgStandardTokenGasCost         = 4
+	pvgFloorPerTokenGasCost         = 10
+	pvgTokensPerNonzeroByte         = 4
+	pvgEip7702AuthGas               = 25000
+)
+
+// executeUserOpMethodSig is the method selector that triggers the EntryPoint's
+// special executeUserOp calldata handling.
+var executeUserOpMethodSig = []byte{0x8d, 0xd7, 0x71, 0x2f}
+
+// calcPreVerificationGasV07 mirrors eth-infinitism's PreVerificationGasCalculator:
+// the userOp's share of the bundle transaction cost plus the EIP-7623 floor
+// price of its calldata tokens. Since the actual validation gas usage is not
+// known at this point, the op's own gas limits stand in for it: this slightly
+// relaxes the floor branch, which only dominates for large calldata with small
+// gas limits.
+func (ov *Overhead) calcPreVerificationGasV07(op userop.UserOperationInterface, packed []byte) float64 {
+	tokenCount := float64(0)
+	for _, b := range packed {
+		if b == 0 {
+			tokenCount++
+		} else {
+			tokenCount += pvgTokensPerNonzeroByte
+		}
+	}
+	words := math.Floor(float64(len(packed)+31) / 32)
+
+	perUserOpOverhead := float64(pvgPerUserOpGasOverhead)
+	if op.GetEIP7702Auth() != nil {
+		perUserOpOverhead += pvgEip7702AuthGas
+	}
+
+	callDataOverhead := float64(0)
+	callData := op.GetCallData()
+	if len(callData) >= 4 && bytes.Equal(callData[:4], executeUserOpMethodSig) {
+		perUserOpOverhead += pvgExecuteUserOpGasOverhead + pvgExecuteUserOpPerWordOverhead*words
+	} else {
+		callDataOverhead = math.Ceil(float64(len(callData))/32) * pvgPerUserOpWordGasOverhead
+	}
+
+	overhead := (pvgFixedGasOverhead / ov.minBundleSize) + perUserOpOverhead + callDataOverhead
+	stipend := ov.intrinsicFixed / ov.minBundleSize
+
+	gasUsed := float64(0)
+	if cgl := op.GetCallGasLimit(); cgl != nil {
+		gasUsed += float64(cgl.Int64())
+	}
+	if pogl := op.GetPaymasterPostOpGasLimit(); pogl != nil {
+		gasUsed += float64(pogl.Int64())
+	}
+	gasUsed /= 10
+	if vgl := op.GetVerificationGasLimit(); vgl != nil {
+		gasUsed += float64(vgl.Int64())
+	}
+
+	return stipend + math.Max(
+		pvgStandardTokenGasCost*tokenCount+overhead+gasUsed,
+		pvgFloorPerTokenGasCost*tokenCount,
+	) - gasUsed
 }
 
 func (ov *Overhead) calcCallDataCost(packed []byte) float64 {

@@ -2,6 +2,7 @@ package tracer
 
 import (
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -24,8 +25,8 @@ type TopLevelHook func(frame *Erc7562Frame, info *CallFromEntryPointInfo)
 //   - Storage access is keyed by the frame's storage context address
 //     (From for DELEGATECALL/CALLCODE, To otherwise), matching the JS
 //     tracer's log.contract.getAddress().
-//   - Keccak preimages are aggregated from the top-level subtrees only; the
-//     EntryPoint's own depth-1 hashes are excluded, as in the JS tracer.
+//   - Keccak preimages are read from the root frame (where the native tracer
+//     stores the whole transaction's preimages) plus any per-frame captures.
 //   - The flat Calls list is synthesized from the tree in enter/exit order so
 //     NewCallStack behaves identically for the JS and native paths.
 func FromErc7562(root *Erc7562Frame, entryPoint common.Address, hook TopLevelHook) (*BundlerCollectorReturn, error) {
@@ -42,6 +43,12 @@ func FromErc7562(root *Erc7562Frame, entryPoint common.Address, hook TopLevelHoo
 		Calls:               []CallInfo{},
 		Logs:                []LogInfo{},
 		Debug:               []any{},
+	}
+
+	// The native tracer stores the keccak preimages for the whole transaction
+	// on the root frame (unlike the JS tracer's per-depth capture).
+	for _, k := range root.Keccak {
+		out.Keccak = append(out.Keccak, hexutil.Encode(k))
 	}
 
 	for i := range root.Calls {
@@ -65,6 +72,15 @@ func FromErc7562(root *Erc7562Frame, entryPoint common.Address, hook TopLevelHoo
 	return out, nil
 }
 
+// isPrecompile reports whether addr is in the standard precompile range
+// (0x01–0x09). The RIP-7212 precompile at 0x100 is intentionally NOT included:
+// whether calls to it are allowed depends on chain support, which the storage
+// slots validator decides via IsRIP7212Supported.
+func isPrecompile(addr common.Address) bool {
+	n := new(big.Int).SetBytes(addr.Bytes())
+	return n.Sign() > 0 && n.Cmp(big.NewInt(0x09)) <= 0
+}
+
 func newCallFromEntryPointInfo(frame *Erc7562Frame) CallFromEntryPointInfo {
 	sig := frame.Input
 	if len(sig) > 4 {
@@ -83,17 +99,31 @@ func newCallFromEntryPointInfo(frame *Erc7562Frame) CallFromEntryPointInfo {
 // aggregateSubtree folds one frame (and recursively its children) into the
 // top-level call info and the global collector return.
 func aggregateSubtree(frame *Erc7562Frame, info *CallFromEntryPointInfo, out *BundlerCollectorReturn) {
+	storageAddr := frame.StorageAddress()
 	for key, count := range frame.UsedOpcodes {
-		info.Opcodes[OpNameFromKey(key)] += float64(count)
+		name := OpNameFromKey(key)
+		info.Opcodes[name] += float64(count)
+		if name == "CREATE" || name == "CREATE2" {
+			if info.CreateOpcodes == nil {
+				info.CreateOpcodes = map[common.Address]Counts{}
+			}
+			if info.CreateOpcodes[storageAddr] == nil {
+				info.CreateOpcodes[storageAddr] = Counts{}
+			}
+			info.CreateOpcodes[storageAddr][name] += float64(count)
+		}
 	}
 
-	storageAddr := frame.StorageAddress()
-	if len(frame.AccessedSlots.Reads) > 0 || len(frame.AccessedSlots.Writes) > 0 {
+	ensureAccess := func() AccessInfo {
 		access, ok := info.Access[storageAddr]
 		if !ok {
 			access = AccessInfo{Reads: HexMap{}, Writes: Counts{}}
 			info.Access[storageAddr] = access
 		}
+		return access
+	}
+	if len(frame.AccessedSlots.Reads) > 0 || len(frame.AccessedSlots.Writes) > 0 {
+		access := ensureAccess()
 		for slot, values := range frame.AccessedSlots.Reads {
 			if _, seen := access.Reads[slot]; !seen {
 				v := ""
@@ -108,14 +138,27 @@ func aggregateSubtree(frame *Erc7562Frame, info *CallFromEntryPointInfo, out *Bu
 		}
 	}
 
-	for _, count := range frame.AccessedSlots.TransientReads {
+	// OP-070: transient storage (TLOAD/TSTORE) follows the exact same
+	// validation rules as persistent storage, so transient slots join the
+	// regular access map alongside the per-entity opcode counts.
+	for slot, count := range frame.AccessedSlots.TransientReads {
 		info.TLOAD += float64(count)
+		access := ensureAccess()
+		if _, seen := access.Reads[slot]; !seen {
+			access.Reads[slot] = ""
+		}
 	}
-	for _, count := range frame.AccessedSlots.TransientWrites {
+	for slot, count := range frame.AccessedSlots.TransientWrites {
 		info.TSTORE += float64(count)
+		ensureAccess().Writes[slot] += float64(count)
 	}
 
 	for addr, cs := range frame.ContractSize {
+		// The JS tracer skipped precompiles when recording contract sizes
+		// (calling one is always allowed per OP-062, despite size 0).
+		if isPrecompile(addr) {
+			continue
+		}
 		if _, seen := info.ContractSize[addr]; !seen {
 			info.ContractSize[addr] = ContractSizeInfo{
 				ContractSize: float64(cs.ContractSize),
@@ -128,7 +171,11 @@ func aggregateSubtree(frame *Erc7562Frame, info *CallFromEntryPointInfo, out *Bu
 		info.ExtCodeAccessInfo[addr] = opcode
 	}
 
-	if frame.OutOfGas {
+	// Precompiles execute no opcodes, so the JS tracer never attributed an
+	// out-of-gas inside one to the calling entity; a precompile call with too
+	// little gas simply returns failure (e.g. probing allowed precompiles per
+	// OP-062). Only propagate OOG from regular frames.
+	if frame.OutOfGas && !isPrecompile(frame.To) {
 		info.OOG = true
 	}
 

@@ -14,6 +14,7 @@ import (
 	"github.com/zarbanio/bundler/internal/logger"
 	"github.com/zarbanio/bundler/pkg/entrypoint/filter"
 	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
+	rpcerrors "github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/handlers"
 	"github.com/zarbanio/bundler/pkg/handlers/payg"
@@ -136,7 +137,7 @@ func (i *Client) SetGetStakeFunc(fn stake.GetStakeFunc) {
 // field-based detection on the request map.
 func parseVersionedUserOp(op map[string]any, ep common.Address) (userop.UserOperationInterface, userop.Version, error) {
 	if op == nil {
-		return nil, userop.V0_6, errors.New("user operation data is nil")
+		return nil, userop.V0_6, rpcerrors.NewRPCError(rpcerrors.INVALID_FIELDS, "user operation data is nil", nil)
 	}
 	version := userop.DetectVersionFromEntryPoint(ep)
 	if version == userop.V0_6 {
@@ -149,13 +150,13 @@ func parseVersionedUserOp(op map[string]any, ep common.Address) (userop.UserOper
 	if version == userop.V0_6 {
 		v06op, err := userop.New(op)
 		if err != nil {
-			return nil, version, err
+			return nil, version, rpcerrors.NewRPCError(rpcerrors.INVALID_FIELDS, err.Error(), err.Error())
 		}
 		return v06op, version, nil
 	}
 	vop, err := userop.NewUserOperation(version, op)
 	if err != nil {
-		return nil, version, err
+		return nil, version, rpcerrors.NewRPCError(rpcerrors.INVALID_FIELDS, err.Error(), err.Error())
 	}
 	return vop.Op, version, nil
 }

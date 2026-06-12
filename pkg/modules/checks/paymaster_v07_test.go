@@ -11,7 +11,7 @@ import (
 func TestValidatePaymaster_ZeroAddress(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 
-	if err := ValidatePaymaster(op, testutils.NonStakedZeroDepositInfo, testutils.MockGetCode, userop.V0_6); err != nil {
+	if err := ValidatePaymaster(op, testutils.NonStakedZeroDepositInfo, testutils.MockGetCode, nil, userop.V0_6); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 }
@@ -20,7 +20,7 @@ func TestValidatePaymaster_NotDeployed(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 	op.PaymasterAndData = op.Sender.Bytes()
 
-	err := ValidatePaymaster(op, testutils.NonStakedDepositInfo, testutils.MockGetCodeZero, userop.V0_6)
+	err := ValidatePaymaster(op, testutils.NonStakedDepositInfo, testutils.MockGetCodeZero, nil, userop.V0_6)
 	if err == nil {
 		t.Fatal("got nil, want err")
 	}
@@ -30,7 +30,7 @@ func TestValidatePaymaster_InsufficientDeposit(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 	op.PaymasterAndData = op.Sender.Bytes()
 
-	err := ValidatePaymaster(op, testutils.NonStakedZeroDepositInfo, testutils.MockGetCode, userop.V0_6)
+	err := ValidatePaymaster(op, testutils.NonStakedZeroDepositInfo, testutils.MockGetCode, nil, userop.V0_6)
 	if err == nil {
 		t.Fatal("got nil, want err")
 	}
@@ -40,7 +40,7 @@ func TestValidatePaymaster_Success(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 	op.PaymasterAndData = op.Sender.Bytes()
 
-	if err := ValidatePaymaster(op, testutils.NonStakedDepositInfo, testutils.MockGetCode, userop.V0_6); err != nil {
+	if err := ValidatePaymaster(op, testutils.NonStakedDepositInfo, testutils.MockGetCode, nil, userop.V0_6); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 }
@@ -51,7 +51,7 @@ func TestValidatePaymaster_V08ZeroAddrWithData(t *testing.T) {
 	// but actually zero-address paymaster means no paymaster
 	op.PaymasterAndData = []byte{}
 
-	err := ValidatePaymaster(op, testutils.NonStakedZeroDepositInfo, testutils.MockGetCode, userop.V0_8)
+	err := ValidatePaymaster(op, testutils.NonStakedZeroDepositInfo, testutils.MockGetCode, nil, userop.V0_8)
 	if err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
@@ -61,7 +61,7 @@ func TestValidatePaymaster_V08WithPaymaster(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 	op.PaymasterAndData = op.Sender.Bytes()
 
-	if err := ValidatePaymaster(op, testutils.NonStakedDepositInfo, testutils.MockGetCode, userop.V0_8); err != nil {
+	if err := ValidatePaymaster(op, testutils.NonStakedDepositInfo, testutils.MockGetCode, nil, userop.V0_8); err != nil {
 		t.Fatalf("got %v, want nil", err)
 	}
 }

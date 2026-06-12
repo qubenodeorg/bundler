@@ -56,14 +56,19 @@ var (
 	UserOpArr, _  = abi.NewType("tuple[]", "ops", UserOpPrimitives)
 )
 
+// EIP7702MarkerFactory is the left-aligned EIP-7702 initCode marker: an op
+// whose initCode starts with bytes 0x7702 has a delegated EOA sender instead
+// of a factory (Eip7702Support.INITCODE_EIP7702_MARKER).
+var EIP7702MarkerFactory = common.HexToAddress("0x7702000000000000000000000000000000000000")
+
 // Authorization represents an EIP-7702 authorization tuple.
 type Authorization struct {
-	ChainID *big.Int       `json:"chainId"`
-	Address common.Address `json:"address"`
-	Nonce   *big.Int       `json:"nonce"`
-	YParity uint8          `json:"yParity"`
-	R       *big.Int       `json:"r"`
-	S       *big.Int       `json:"s"`
+	ChainID *big.Int       `json:"chainId" mapstructure:"chainId"`
+	Address common.Address `json:"address" mapstructure:"address"`
+	Nonce   *big.Int       `json:"nonce"   mapstructure:"nonce"`
+	YParity uint8          `json:"yParity" mapstructure:"yParity"`
+	R       *big.Int       `json:"r"       mapstructure:"r"`
+	S       *big.Int       `json:"s"       mapstructure:"s"`
 }
 
 // UserOperation represents an ERC-4337 v0.8 style transaction with EIP-7702 support.
@@ -170,11 +175,22 @@ func (op *UserOperation) GetFactoryData() []byte {
 }
 
 // GetMaxGasAvailable returns the max amount of gas that can be consumed by this UserOperation.
+// v0.7 removes the 3x verificationGasLimit multiplier for paymasters and adds
+// the paymaster gas limits when a paymaster is set.
 func (op *UserOperation) GetMaxGasAvailable() *big.Int {
-	return big.NewInt(0).Add(
+	sum := big.NewInt(0).Add(
 		big.NewInt(0).Add(op.VerificationGasLimit, op.CallGasLimit),
 		op.PreVerificationGas,
 	)
+	if op.Paymaster != (common.Address{}) {
+		if op.PaymasterVerificationGasLimit != nil {
+			sum.Add(sum, op.PaymasterVerificationGasLimit)
+		}
+		if op.PaymasterPostOpGasLimit != nil {
+			sum.Add(sum, op.PaymasterPostOpGasLimit)
+		}
+	}
+	return sum
 }
 
 // GetMaxPrefund returns the max amount of wei required to pay for gas fees.
@@ -284,7 +300,7 @@ func (op *UserOperation) PackForSignature() []byte {
 	packed, _ := args.Pack(
 		op.Sender,
 		op.Nonce,
-		crypto.Keccak256Hash(op.PackInitCode()),
+		op.hashInitCode(),
 		crypto.Keccak256Hash(op.CallData),
 		op.AccountGasLimits(),
 		op.PreVerificationGas,
@@ -292,6 +308,16 @@ func (op *UserOperation) PackForSignature() []byte {
 		crypto.Keccak256Hash(op.PackPaymasterAndData()),
 	)
 	return packed
+}
+
+// hashInitCode mirrors Eip7702Support._getEip7702InitCodeHashOverride: for a
+// delegated EOA sender (marker factory), the EntryPoint hashes the delegate
+// address plus any init calldata instead of the literal initCode.
+func (op *UserOperation) hashInitCode() common.Hash {
+	if op.Factory == EIP7702MarkerFactory && op.EIP7702Auth != nil {
+		return crypto.Keccak256Hash(append(op.EIP7702Auth.Address.Bytes(), op.FactoryData...))
+	}
+	return crypto.Keccak256Hash(op.PackInitCode())
 }
 
 var (
@@ -354,53 +380,70 @@ func (op *UserOperation) MarshalJSON() ([]byte, error) {
 		S       string `json:"s"`
 	}
 
+	// encodeBigOrZero tolerates nil big.Ints: partially-populated auth
+	// tuples can reach marshalling before validation rejects them.
+	encodeBigOrZero := func(b *big.Int) string {
+		if b == nil {
+			return "0x0"
+		}
+		return hexutil.EncodeBig(b)
+	}
+
 	var auth *authJSON
 	if op.EIP7702Auth != nil {
 		auth = &authJSON{
-			ChainID: hexutil.EncodeBig(op.EIP7702Auth.ChainID),
+			ChainID: encodeBigOrZero(op.EIP7702Auth.ChainID),
 			Address: op.EIP7702Auth.Address.String(),
-			Nonce:   hexutil.EncodeBig(op.EIP7702Auth.Nonce),
+			Nonce:   encodeBigOrZero(op.EIP7702Auth.Nonce),
 			YParity: op.EIP7702Auth.YParity,
-			R:       hexutil.EncodeBig(op.EIP7702Auth.R),
-			S:       hexutil.EncodeBig(op.EIP7702Auth.S),
+			R:       encodeBigOrZero(op.EIP7702Auth.R),
+			S:       encodeBigOrZero(op.EIP7702Auth.S),
 		}
 	}
 
-	return json.Marshal(&struct {
-		Sender                        string      `json:"sender"`
-		Nonce                         string      `json:"nonce"`
-		Factory                       string      `json:"factory"`
-		FactoryData                   string      `json:"factoryData"`
-		CallData                      string      `json:"callData"`
-		CallGasLimit                  string      `json:"callGasLimit"`
-		VerificationGasLimit          string      `json:"verificationGasLimit"`
-		PreVerificationGas            string      `json:"preVerificationGas"`
-		MaxFeePerGas                  string      `json:"maxFeePerGas"`
-		MaxPriorityFeePerGas          string      `json:"maxPriorityFeePerGas"`
-		Paymaster                     string      `json:"paymaster"`
-		PaymasterVerificationGasLimit string      `json:"paymasterVerificationGasLimit"`
-		PaymasterPostOpGasLimit       string      `json:"paymasterPostOpGasLimit"`
-		PaymasterData                 string      `json:"paymasterData"`
-		EIP7702Auth                   *authJSON   `json:"eip7702Auth,omitempty"`
-		Signature                     string      `json:"signature"`
+	// The factory and paymaster field groups are optional per the ERC-4337 RPC
+	// spec and are omitted when their address is unset, so the encoded op
+	// round-trips to the same userOpHash.
+	out := &struct {
+		Sender                        string    `json:"sender"`
+		Nonce                         string    `json:"nonce"`
+		Factory                       string    `json:"factory,omitempty"`
+		FactoryData                   string    `json:"factoryData,omitempty"`
+		CallData                      string    `json:"callData"`
+		CallGasLimit                  string    `json:"callGasLimit"`
+		VerificationGasLimit          string    `json:"verificationGasLimit"`
+		PreVerificationGas            string    `json:"preVerificationGas"`
+		MaxFeePerGas                  string    `json:"maxFeePerGas"`
+		MaxPriorityFeePerGas          string    `json:"maxPriorityFeePerGas"`
+		Paymaster                     string    `json:"paymaster,omitempty"`
+		PaymasterVerificationGasLimit string    `json:"paymasterVerificationGasLimit,omitempty"`
+		PaymasterPostOpGasLimit       string    `json:"paymasterPostOpGasLimit,omitempty"`
+		PaymasterData                 string    `json:"paymasterData,omitempty"`
+		EIP7702Auth                   *authJSON `json:"eip7702Auth,omitempty"`
+		Signature                     string    `json:"signature"`
 	}{
-		Sender:                        op.Sender.String(),
-		Nonce:                         hexutil.EncodeBig(op.Nonce),
-		Factory:                       op.Factory.String(),
-		FactoryData:                   hexutil.Encode(op.FactoryData),
-		CallData:                      hexutil.Encode(op.CallData),
-		CallGasLimit:                  hexutil.EncodeBig(op.CallGasLimit),
-		VerificationGasLimit:          hexutil.EncodeBig(op.VerificationGasLimit),
-		PreVerificationGas:            hexutil.EncodeBig(op.PreVerificationGas),
-		MaxFeePerGas:                  hexutil.EncodeBig(op.MaxFeePerGas),
-		MaxPriorityFeePerGas:          hexutil.EncodeBig(op.MaxPriorityFeePerGas),
-		Paymaster:                     op.Paymaster.String(),
-		PaymasterVerificationGasLimit: hexutil.EncodeBig(op.PaymasterVerificationGasLimit),
-		PaymasterPostOpGasLimit:       hexutil.EncodeBig(op.PaymasterPostOpGasLimit),
-		PaymasterData:                 hexutil.Encode(op.PaymasterData),
-		EIP7702Auth:                   auth,
-		Signature:                     hexutil.Encode(op.Signature),
-	})
+		Sender:               op.Sender.String(),
+		Nonce:                hexutil.EncodeBig(op.Nonce),
+		CallData:             hexutil.Encode(op.CallData),
+		CallGasLimit:         hexutil.EncodeBig(op.CallGasLimit),
+		VerificationGasLimit: hexutil.EncodeBig(op.VerificationGasLimit),
+		PreVerificationGas:   hexutil.EncodeBig(op.PreVerificationGas),
+		MaxFeePerGas:         hexutil.EncodeBig(op.MaxFeePerGas),
+		MaxPriorityFeePerGas: hexutil.EncodeBig(op.MaxPriorityFeePerGas),
+		EIP7702Auth:          auth,
+		Signature:            hexutil.Encode(op.Signature),
+	}
+	if op.Factory != (common.Address{}) {
+		out.Factory = op.Factory.String()
+		out.FactoryData = hexutil.Encode(op.FactoryData)
+	}
+	if op.Paymaster != (common.Address{}) {
+		out.Paymaster = op.Paymaster.String()
+		out.PaymasterVerificationGasLimit = hexutil.EncodeBig(op.PaymasterVerificationGasLimit)
+		out.PaymasterPostOpGasLimit = hexutil.EncodeBig(op.PaymasterPostOpGasLimit)
+		out.PaymasterData = hexutil.Encode(op.PaymasterData)
+	}
+	return json.Marshal(out)
 }
 
 // ToMap returns the current UserOp struct as a map type.

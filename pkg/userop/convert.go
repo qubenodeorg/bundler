@@ -1,6 +1,7 @@
 package userop
 
 import (
+	"encoding/json"
 	"errors"
 	"math/big"
 
@@ -53,7 +54,30 @@ func ConvertToV06Packed(op UserOperationInterface) (*UserOperation, error) {
 		MaxPriorityFeePerGas: op.GetMaxPriorityFeePerGas(),
 		PaymasterAndData:     paymasterAndData,
 		Signature:            op.GetSignature(),
+		EIP7702Auth:          normalizeAuth(op.GetEIP7702Auth()),
 	}, nil
+}
+
+// normalizeAuth converts a version-specific Authorization value into the base
+// *Authorization. The versioned packages cannot be imported here (they are
+// imported by this package), so the conversion goes through JSON, which all
+// Authorization shapes share.
+func normalizeAuth(a interface{}) *Authorization {
+	if a == nil {
+		return nil
+	}
+	if v, ok := a.(*Authorization); ok {
+		return v
+	}
+	b, err := json.Marshal(a)
+	if err != nil {
+		return nil
+	}
+	out := &Authorization{}
+	if err := json.Unmarshal(b, out); err != nil {
+		return nil
+	}
+	return out
 }
 
 // packFactory packs factory + factoryData into v0.6-style InitCode bytes.

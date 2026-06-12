@@ -107,7 +107,11 @@ func SimulateHandleOp(in *SimulateInput) error {
 	}
 
 	if fo, foErr := v09reverts.NewFailedOpWithRevert(err); foErr == nil {
-		return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		reason := fo.Reason
+		if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+			reason = reason + ": " + inner
+		}
+		return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, reason, fo)
 	}
 
 	return err

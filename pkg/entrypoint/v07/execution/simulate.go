@@ -81,7 +81,9 @@ func SimulateHandleOp(in *SimulateInput) error {
 		return err
 	}
 
-	beneficiary := common.HexToAddress("0x")
+	// handleOps reverts AA90 for a zero beneficiary even when the op is valid,
+	// so simulate with a dummy non-zero beneficiary.
+	beneficiary := common.BigToAddress(common.Big1)
 	tx, err := ep.HandleOps(auth, []epv07.PackedUserOperation{*packedOp}, beneficiary)
 	if err != nil {
 		return err
@@ -99,11 +101,15 @@ func SimulateHandleOp(in *SimulateInput) error {
 	}
 
 	if fo, foErr := reverts.NewFailedOp(err); foErr == nil {
-		return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		return errors.NewRPCError(reverts.RPCErrorCodeForFailedOp(fo.Reason), fo.Reason, fo)
 	}
 
 	if fo, foErr := v07reverts.NewFailedOpWithRevert(err); foErr == nil {
-		return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		reason := fo.Reason
+		if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+			reason = reason + ": " + inner
+		}
+		return errors.NewRPCError(reverts.RPCErrorCodeForFailedOp(fo.Reason), reason, fo)
 	}
 
 	return err

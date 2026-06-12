@@ -10,13 +10,15 @@ import (
 )
 
 func TestOpCGLessThanOH_V07(t *testing.T) {
+	// v0.7+ imposes no static callGasLimit minimum (EIP-7623 PVG pricing
+	// covers small limits), so a tiny callGasLimit is accepted.
 	op := testutils.MockValidInitUserOp()
 	ov := gas.NewDefaultOverhead()
 	cg := ov.NonZeroValueCall()
 	op.CallGasLimit = big.NewInt(0).Sub(cg, common.Big1)
 
-	if err := ValidateCallGasLimitV07(op, ov); err == nil {
-		t.Fatalf("got nil, want err")
+	if err := ValidateCallGasLimitV07(op, ov); err != nil {
+		t.Fatalf("got %v, want nil", err)
 	}
 }
 

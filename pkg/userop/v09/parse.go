@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strings"
 	"sync"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -65,6 +66,64 @@ func decodeOpTypes(
 	return data, nil
 }
 
+// normalizeOptionalFields fills request fields that the ERC-4337 RPC spec
+// marks optional (the factory and paymaster groups) so decoding and
+// required-field validation treat an omitted group as empty. A dependent
+// field without its parent (e.g. factoryData without factory) is rejected.
+func normalizeOptionalFields(data map[string]any) (map[string]any, error) {
+	zeroAddress := "0x0000000000000000000000000000000000000000"
+
+	d := make(map[string]any, len(data)+6)
+	for k, v := range data {
+		// Treat JSON null the same as an omitted field.
+		if v == nil {
+			continue
+		}
+		d[k] = v
+	}
+
+	if _, ok := d["factory"]; !ok {
+		if _, ok := d["factoryData"]; ok {
+			return nil, errors.New("factoryData provided without factory")
+		}
+		d["factory"] = zeroAddress
+		d["factoryData"] = "0x"
+	} else if _, ok := d["factoryData"]; !ok {
+		d["factoryData"] = "0x"
+	}
+
+	// The EIP-7702 marker factory "0x7702" denotes a delegated EOA sender. The
+	// EntryPoint matches it left-aligned (initCode starting with bytes 0x7702),
+	// so expand it before HexToAddress right-aligns it.
+	if f, ok := d["factory"].(string); ok && strings.EqualFold(f, "0x7702") {
+		d["factory"] = EIP7702MarkerFactory.Hex()
+	}
+
+	if _, ok := d["paymaster"]; !ok {
+		for _, k := range []string{"paymasterVerificationGasLimit", "paymasterPostOpGasLimit", "paymasterData"} {
+			if _, ok := d[k]; ok {
+				return nil, fmt.Errorf("%s provided without paymaster", k)
+			}
+		}
+		d["paymaster"] = zeroAddress
+		d["paymasterVerificationGasLimit"] = "0x0"
+		d["paymasterPostOpGasLimit"] = "0x0"
+		d["paymasterData"] = "0x"
+	} else {
+		if _, ok := d["paymasterVerificationGasLimit"]; !ok {
+			d["paymasterVerificationGasLimit"] = "0x0"
+		}
+		if _, ok := d["paymasterPostOpGasLimit"]; !ok {
+			d["paymasterPostOpGasLimit"] = "0x0"
+		}
+		if _, ok := d["paymasterData"]; !ok {
+			d["paymasterData"] = "0x"
+		}
+	}
+
+	return d, nil
+}
+
 func validateAddressType(field reflect.Value) interface{} {
 	value, ok := field.Interface().(common.Address)
 	if !ok {
@@ -84,6 +143,11 @@ func validateBigIntType(field reflect.Value) interface{} {
 // New decodes a map into a v0.9 UserOperation object and validates all the fields are correctly typed.
 func New(data map[string]any) (*UserOperation, error) {
 	var op UserOperation
+
+	data, err := normalizeOptionalFields(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadUserOperationData, err)
+	}
 
 	config := &mapstructure.DecoderConfig{
 		DecodeHook:       decodeOpTypes,

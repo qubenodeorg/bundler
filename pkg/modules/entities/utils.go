@@ -140,6 +140,29 @@ func getStatus(txn *badger.Txn, entity common.Address, repConst *ReputationConst
 
 func overrideEntity(txn *badger.Txn, entry *ReputationOverride) error {
 	return txn.SetEntry(
-		badger.NewEntry(getOpsCountKey(entry.Address), getOpsCountValue(entry.OpsSeen, entry.OpsIncluded)),
+		badger.NewEntry(getOpsCountKey(entry.Address), getOpsCountValue(int(entry.OpsSeen), int(entry.OpsIncluded))),
 	)
+}
+
+func decrementOpsSeenByEntity(txn *badger.Txn, entity common.Address) error {
+	opsSeen, opsIncluded, err := getOpsCountByEntity(txn, entity)
+	if err != nil {
+		return err
+	}
+	if opsSeen > 0 {
+		opsSeen--
+	}
+
+	e := badger.NewEntry(getOpsCountKey(entity), getOpsCountValue(opsSeen, opsIncluded))
+	return txn.SetEntry(e)
+}
+
+func addOpsSeenByEntity(txn *badger.Txn, entity common.Address, n int) error {
+	opsSeen, opsIncluded, err := getOpsCountByEntity(txn, entity)
+	if err != nil {
+		return err
+	}
+
+	e := badger.NewEntry(getOpsCountKey(entity), getOpsCountValue(opsSeen+n, opsIncluded))
+	return txn.SetEntry(e)
 }

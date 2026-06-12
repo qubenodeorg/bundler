@@ -71,9 +71,12 @@ func TestV07_EIP7702AndPaymasterSignatureDefaults(t *testing.T) {
 func TestV07_GetMaxGasAvailableNoMultiplier(t *testing.T) {
 	op := mockV07OpWithPaymaster()
 	got := op.GetMaxGasAvailable()
-	// v0.7 drops the 3x paymaster multiplier.
+	// v0.7 drops the 3x paymaster multiplier and instead adds the explicit
+	// paymaster gas limits.
 	want := new(big.Int).Add(op.VerificationGasLimit, op.CallGasLimit)
 	want.Add(want, op.PreVerificationGas)
+	want.Add(want, op.PaymasterVerificationGasLimit)
+	want.Add(want, op.PaymasterPostOpGasLimit)
 	if got.Cmp(want) != 0 {
 		t.Fatalf("v0.7 max gas: got %s want %s", got, want)
 	}

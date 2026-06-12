@@ -26,11 +26,16 @@ var (
 		"NUMBER",
 		"ORIGIN",
 		"GAS",
-		"CREATE",
+		// CREATE/CREATE2 are not in the generic set: OP-031, OP-032, EREP-060
+		// and EREP-061 allow them for specific entities, enforced per-entity in
+		// ValidateEntityRules.
 		"COINBASE",
 		"SELFDESTRUCT",
-		"TSTORE",
-		"TLOAD",
+		"BLOBHASH",
+		"BLOBBASEFEE",
+		// TSTORE/TLOAD are not banned: per OP-070 transient storage follows
+		// the same validation rules as persistent storage, enforced via the
+		// storage slot access checks.
 	)
 
 	// BannedUnstakedOpCodeSet lists opcodes not allowed for unstaked entities.

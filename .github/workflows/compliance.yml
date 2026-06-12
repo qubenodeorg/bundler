@@ -127,6 +127,34 @@ jobs:
         working-directory: bundler-spec-tests/@account-abstraction
         run: yarn deploy --network localhost
 
+      # The master spec checkout compiles EntryPoint from source, which does
+      # not reproduce the released v0.8 bytecode, so its create2 deploy lands
+      # at a non-canonical address. Overlay the released artifact at the
+      # canonical address via the deterministic-deployment proxy (installed by
+      # the yarn deploy above) using the published vanity salt.
+      - name: Deploy v0.8 EntryPoint at canonical address
+        if: matrix.version == 'v0.8'
+        run: |
+          npm pack @account-abstraction/contracts@0.8.0
+          tar -xzf account-abstraction-contracts-0.8.0.tgz package/artifacts/EntryPoint.json
+          BYTECODE=$(node -p "require('./package/artifacts/EntryPoint.json').bytecode.slice(2)")
+          SALT=0a59dbff790c23c976a548690c27297883cc66b4c67024f9117b0238995e35e9
+          docker exec geth geth \
+            --exec "eth.sendTransaction({from: eth.accounts[0], to: \"0x4e59b44847b379578588920cA78FbF26c0B4956C\", data: \"0x${SALT}${BYTECODE}\", gas: 10000000})" \
+            attach http://localhost:8545
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -X POST -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_getCode","params":["0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108","latest"]}' \
+              http://localhost:8545 | jq -r .result)
+            if [ "$CODE" != "0x" ] && [ -n "$CODE" ] && [ "$CODE" != "null" ]; then
+              echo "v0.8 EntryPoint deployed at canonical address"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "v0.8 EntryPoint deploy failed" >&2
+          exit 1
+
       - name: Fund bundler relayer
         run: |
           docker exec geth geth \
