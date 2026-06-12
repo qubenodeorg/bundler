@@ -95,14 +95,18 @@ func TestFromErc7562HandleOps(t *testing.T) {
 		t.Errorf("paymaster entry = %s %s", pm.TopLevelTargetAddress, pm.TopLevelMethodSig)
 	}
 
-	// Keccak: aggregated from top-level subtrees only — the EntryPoint's own
-	// depth-1 keccak must be excluded (JS tracer parity).
-	if len(res.Keccak) != 1 {
-		t.Fatalf("keccak = %v, want exactly the sender preimage", res.Keccak)
-	}
+	// Keccak: the native tracer stores the whole transaction's preimages on
+	// the root frame; both the root's and any per-frame captures must land in
+	// the aggregate, or associated-storage rules cannot match.
 	wantKeccak := "0x00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000"
-	if res.Keccak[0] != wantKeccak {
-		t.Errorf("keccak[0] = %q, want %q", res.Keccak[0], wantKeccak)
+	found := false
+	for _, k := range res.Keccak {
+		if k == wantKeccak {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("keccak = %v, want it to contain the sender preimage %q", res.Keccak, wantKeccak)
 	}
 }
 

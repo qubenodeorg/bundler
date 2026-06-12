@@ -3,7 +3,6 @@ package gas
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"math"
 	"math/big"
 
@@ -48,57 +47,32 @@ func CalcArbitrumPVGWithEthClient(
 	pk, _ := crypto.GenerateKey()
 	dummy, _ := signer.New(hexutil.Encode(crypto.FromECDSA(pk))[2:])
 	return func(op userop.UserOperationInterface, static *big.Int) (*big.Int, error) {
-		data, err := op.ToMap()
+		// Convert v0.7+ ops to the legacy v0.6 struct purely for calldata
+		// sizing; the packed v0.6 encoding is a close (slightly conservative)
+		// proxy for the on-chain handleOps calldata fed to the L1 estimator.
+		tmp, err := ConvertToV06(op)
 		if err != nil {
 			return nil, err
 		}
 
-		pmHex := fieldToHexStr(data, "paymasterAndData")
-		if pmHex == "0x" {
-			// v0.7+: paymasterAndData is packed as address(20) + gasLimits(32) + paymasterData
-			if pmAddr := fieldToHexStr(data, "paymaster"); pmAddr != "0x" && common.HexToAddress(pmAddr) != (common.Address{}) {
-				dummyGasLimits := "0000000000000000000000000000000000000000000000000000000000000000"
-				pmData := fieldToHexStr(data, "paymasterData")
-				if len(pmData) > 2 {
-					pmHex = pmAddr + dummyGasLimits + pmData[2:]
-				} else {
-					pmHex = pmAddr + dummyGasLimits
-				}
-			} else {
-				pmHex = fieldToHexStr(data, "paymasterData")
-			}
-		}
-		pmBytes, decErr := hexutil.Decode(pmHex)
-		if decErr != nil {
-			pmBytes = []byte{1}
-		}
-		pmLen := len(pmBytes)
+		// Replace paymasterAndData with same-length nonzero bytes so the L1
+		// size estimate is not skewed by zero-byte calldata discounts.
+		pmLen := len(tmp.PaymasterAndData)
 		if pmLen < 1 {
 			pmLen = 1
 		}
-		data["paymasterAndData"] = hexutil.Encode(bytes.Repeat([]byte{1}, pmLen))
-
-		tmp, err := userop.New(data)
-		if err != nil {
-			return nil, err
-		}
+		tmp.PaymasterAndData = bytes.Repeat([]byte{1}, pmLen)
 
 		// Pack handleOps method inputs
 		ho, err := methods.HandleOpsMethod.Inputs.Pack(
-			[]entrypoint.UserOperation{entrypoint.UserOperation(*tmp)},
+			[]entrypoint.UserOperation{entrypoint.UserOperation(tmp.Core())},
 			dummy.Address,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		create := false
-		if nonceStr, ok := data["nonce"].(string); ok {
-			nonce, nonceErr := hexutil.DecodeBig(nonceStr)
-			if nonceErr == nil && nonce.Cmp(common.Big0) == 0 {
-				create = true
-			}
-		}
+		create := tmp.Nonce != nil && tmp.Nonce.Cmp(common.Big0) == 0
 		ge, err := nodeinterface.GasEstimateL1ComponentMethod.Inputs.Pack(
 			entryPoint,
 			create,
@@ -115,8 +89,6 @@ func CalcArbitrumPVGWithEthClient(
 			"data": hexutil.Encode(append(nodeinterface.GasEstimateL1ComponentMethod.ID, ge...)),
 		}
 
-		j, _ := json.MarshalIndent(req, "", "  ")
-		println(string(j))
 		var out any
 		if err := rpc.Call(&out, "eth_call", &req, "latest"); err != nil {
 			return nil, err

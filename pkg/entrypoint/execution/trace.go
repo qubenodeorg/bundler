@@ -58,7 +58,7 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	if mf == nil {
 		mf = big.NewInt(0)
 	}
-	tx, err := ep.SimulateHandleOp(auth, entrypoint.UserOperation(*in.Op), in.Target, in.Data)
+	tx, err := ep.SimulateHandleOp(auth, entrypoint.UserOperation(in.Op.Core()), in.Target, in.Data)
 	if err != nil {
 		return nil, err
 	}

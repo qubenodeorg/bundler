@@ -373,20 +373,24 @@
 **Deliverable**: E2E tests pass
 
 #### Days 28-29: Compliance Testing
-- [ ] Update compliance test references:
-  - Use bundler-spec-tests v0.9
+- [x] Update compliance test references:
+  - Use bundler-spec-tests v0.6 (`releases/v0.6`)
+  - Use bundler-spec-tests v0.7 (`releases/v0.7`)
+  - Use bundler-spec-tests v0.8 (`master`)
+  - Use bundler-spec-tests v0.9 (`master` + account-abstraction `v0.9.0` contracts — experimental until upstream ships a v0.9 release)
   - Update contract references
 - [ ] Run compliance tests:
   - Validation rules
   - Gas estimation
   - Bundle building
 - [ ] Fix compliance test failures
-- [ ] Update CI workflows:
+- [x] Update CI workflows:
   - `.github/workflows/compliance.yml`
   - `.github/workflows/e2e.yml`
+  - Use v0.6 contracts and EntryPoint
   - Use v0.7 contracts and EntryPoint
   - Use v0.8 contracts and EntryPoint
-  - Use v0.9 contracts and EntryPoint
+  - Use v0.9 contracts and EntryPoint (`0x433709009B8330FDa32311DF1C2AFA402eD8D009`)
 
 **Deliverable**: Compliance tests pass
 

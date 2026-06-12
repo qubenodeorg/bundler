@@ -1,0 +1,200 @@
+name: compliance
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spec-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # bundler-spec-tests has no v0.9 release yet; master tracks v0.8. The
+    # v0.9 entry runs master's tests against the v0.9.0 contracts and
+    # EntryPoint (experimental, non-blocking) until upstream publishes a
+    # v0.9 release. Deeper v0.9 coverage comes from the e2e workflow.
+    continue-on-error: ${{ matrix.experimental || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: v0.6
+            spec-ref: releases/v0.6
+            entrypoint: "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789"
+            node: 18
+          - version: v0.7
+            spec-ref: releases/v0.7
+            entrypoint: "0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+            node: 18
+          - version: v0.8
+            spec-ref: master
+            entrypoint: "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108"
+            node: 18
+          - version: v0.9
+            spec-ref: master
+            entrypoint: "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
+            aa-ref: v0.9.0
+            node: 20
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20"
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Set up PDM
+        uses: pdm-project/setup-pdm@v4
+        with:
+          python-version: "3.11"
+
+      - name: Checkout bundler-spec-tests (${{ matrix.spec-ref }})
+        uses: actions/checkout@v4
+        with:
+          repository: eth-infinitism/bundler-spec-tests
+          ref: ${{ matrix.spec-ref }}
+          path: bundler-spec-tests
+          submodules: recursive
+
+      - name: Pin @account-abstraction to ${{ matrix.aa-ref }}
+        if: matrix.aa-ref
+        working-directory: bundler-spec-tests/@account-abstraction
+        run: |
+          git fetch --depth 1 origin tag ${{ matrix.aa-ref }}
+          git checkout ${{ matrix.aa-ref }}
+
+      - name: Set up bundler-spec-tests
+        working-directory: bundler-spec-tests
+        run: |
+          pdm install
+          # Older spec-test branches pin a py-solc-x that downloads compilers
+          # from the retired solc-bin.ethereum.org domain; repoint it at
+          # binaries.soliditylang.org (same path layout). No-op on new pins.
+          sed -i 's|solc-bin.ethereum.org|binaries.soliditylang.org|g' \
+            .venv/lib/python*/site-packages/solcx/install.py
+          cd spec && yarn install --frozen-lockfile && yarn build && cd ..
+          cd @account-abstraction && yarn install --frozen-lockfile && cd ..
+
+      # geth >= v1.16.0 is required for the native erc7562Tracer used by the
+      # bundler's validation flow.
+      - name: Run geth
+        run: |
+          docker run -d --name geth -p 8545:8545 \
+            ethereum/client-go:v1.16.9 \
+            --verbosity 1 \
+            --dev \
+            --http \
+            --http.addr "0.0.0.0" \
+            --http.vhosts '*' \
+            --http.corsdomain '*' \
+            --http.api eth,net,web3,debug \
+            --rpc.allow-unprotected-txs \
+            --nodiscover --maxpeers 0 \
+            --miner.gaslimit 12000000 \
+            --miner.gasprice 0 \
+            --txpool.pricelimit 0
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null -X POST -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"web3_clientVersion","params":[]}' \
+              http://localhost:8545; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "geth did not become ready" >&2
+          exit 1
+
+      - name: Build bundler
+        run: |
+          go mod download
+          go build -o ./tmp/qubenode-bundler main.go
+
+      - name: Deploy ${{ matrix.version }} EntryPoint
+        working-directory: bundler-spec-tests/@account-abstraction
+        run: yarn deploy --network localhost
+
+      # The master spec checkout compiles EntryPoint from source, which does
+      # not reproduce the released v0.8 bytecode, so its create2 deploy lands
+      # at a non-canonical address. Overlay the released artifact at the
+      # canonical address via the deterministic-deployment proxy (installed by
+      # the yarn deploy above) using the published vanity salt.
+      - name: Deploy v0.8 EntryPoint at canonical address
+        if: matrix.version == 'v0.8'
+        run: |
+          npm pack @account-abstraction/contracts@0.8.0
+          tar -xzf account-abstraction-contracts-0.8.0.tgz package/artifacts/EntryPoint.json
+          BYTECODE=$(node -p "require('./package/artifacts/EntryPoint.json').bytecode.slice(2)")
+          SALT=0a59dbff790c23c976a548690c27297883cc66b4c67024f9117b0238995e35e9
+          docker exec geth geth \
+            --exec "eth.sendTransaction({from: eth.accounts[0], to: \"0x4e59b44847b379578588920cA78FbF26c0B4956C\", data: \"0x${SALT}${BYTECODE}\", gas: 10000000})" \
+            attach http://localhost:8545
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -X POST -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_getCode","params":["0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108","latest"]}' \
+              http://localhost:8545 | jq -r .result)
+            if [ "$CODE" != "0x" ] && [ -n "$CODE" ] && [ "$CODE" != "null" ]; then
+              echo "v0.8 EntryPoint deployed at canonical address"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "v0.8 EntryPoint deploy failed" >&2
+          exit 1
+
+      - name: Fund bundler relayer
+        run: |
+          docker exec geth geth \
+            --exec "eth.sendTransaction({from: eth.accounts[0], to: \"0xa0Ee7A142d267C1f36714E4a8F75612F20a79720\", value: web3.toWei(10000, \"ether\")})" \
+            attach http://localhost:8545
+
+      - name: Run bundler
+        run: |
+          mkdir -p tmp
+          ./tmp/qubenode-bundler start --mode private > tmp/bundler-compliance.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000/ping; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "bundler did not become ready" >&2
+          tail -50 tmp/bundler-compliance.log >&2
+          exit 1
+        env:
+          ERC4337_BUNDLER_ETH_CLIENT_URL: http://localhost:8545
+          ERC4337_BUNDLER_PORT: 3000
+          ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS: ${{ matrix.entrypoint }}
+          ERC4337_BUNDLER_ENTRYPOINT_VERSION: ${{ matrix.version }}
+          ERC4337_BUNDLER_DEBUG_MODE: "true"
+          ERC4337_BUNDLER_DATA_DIRECTORY: /tmp/qubenode_bundler_compliance
+          # Test-only key (anvil deterministic account #9). Do not reuse.
+          ERC4337_BUNDLER_PRIVATE_KEY: 2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6
+
+      # The trailing --entry-point overrides the address baked into the pdm
+      # test script (last occurrence wins), so the v0.9 job can point master's
+      # suite at the v0.9 EntryPoint.
+      - name: Run spec tests
+        working-directory: bundler-spec-tests
+        run: pdm run test --entry-point ${{ matrix.entrypoint }}
+
+      - name: Upload bundler log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-bundler-log-${{ matrix.version }}
+          path: tmp/bundler-compliance.log
+          if-no-files-found: ignore

@@ -1,17 +1,20 @@
 package simulation
 
 import (
+	"context"
 	stdError "errors"
 	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	epv08 "github.com/zarbanio/bundler/pkg/entrypoint/v08"
 	v08reverts "github.com/zarbanio/bundler/pkg/entrypoint/v08/reverts"
 	"github.com/zarbanio/bundler/pkg/errors"
+	"github.com/zarbanio/bundler/pkg/state"
 	"github.com/zarbanio/bundler/pkg/userop"
 	uov08 "github.com/zarbanio/bundler/pkg/userop/v08"
 )
@@ -21,6 +24,11 @@ type SimulateInput struct {
 	EntryPoint common.Address
 	Op         userop.UserOperationInterface
 	ChainID    *big.Int
+
+	// DelegateAddress, when set, is the EIP-7702 delegate of the sender. The
+	// call then runs with the sender's code overridden to the delegation
+	// designation, mirroring the state after the authorization is applied.
+	DelegateAddress common.Address
 }
 
 type SimulateOutput struct {
@@ -107,12 +115,40 @@ func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
 		return nil, err
 	}
 
-	beneficiary := common.Address{}
-	var res []interface{}
-	rawCaller := &epv08.V08Raw{Contract: ep}
-	err = rawCaller.Call(nil, &res, "handleOps", []epv08.PackedUserOperation{*packedOp}, beneficiary)
+	// A zero beneficiary makes handleOps revert AA90 even for valid ops, so a
+	// dummy non-zero beneficiary lets a clean return signal that validation
+	// passed (v0.7+ has no on-chain ValidationResult to decode).
+	beneficiary := common.BigToAddress(common.Big1)
+	if in.DelegateAddress != (common.Address{}) {
+		parsed, abiErr := epv08.V08MetaData.GetAbi()
+		if abiErr != nil {
+			return nil, abiErr
+		}
+		data, packErr := parsed.Pack("handleOps", []epv08.PackedUserOperation{*packedOp}, beneficiary)
+		if packErr != nil {
+			return nil, packErr
+		}
+		code := append([]byte{0xef, 0x01, 0x00}, in.DelegateAddress.Bytes()...)
+		overrides := state.WithCodeOverride(in.Op.GetSender(), code, nil)
+		var out hexutil.Bytes
+		err = in.Rpc.CallContext(
+			context.Background(),
+			&out,
+			"eth_call",
+			map[string]interface{}{
+				"to":   in.EntryPoint,
+				"data": hexutil.Encode(data),
+			},
+			"latest",
+			overrides,
+		)
+	} else {
+		var res []interface{}
+		rawCaller := &epv08.V08Raw{Contract: ep}
+		err = rawCaller.Call(nil, &res, "handleOps", []epv08.PackedUserOperation{*packedOp}, beneficiary)
+	}
 	if err == nil {
-		return nil, fmt.Errorf("unexpected result from handleOps (expected revert)")
+		return &SimulateOutput{}, nil
 	}
 
 	if sim, simErr := v08reverts.NewValidationResult(err); simErr == nil {
@@ -120,11 +156,15 @@ func SimulateValidation(in *SimulateInput) (*SimulateOutput, error) {
 	}
 
 	if fo, foErr := v08reverts.NewFailedOpWithRevert(err); foErr == nil {
-		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		reason := fo.Reason
+		if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+			reason = fmt.Sprintf("%s: %s", reason, inner)
+		}
+		return nil, errors.NewRPCError(reverts.RPCErrorCodeForFailedOp(fo.Reason), reason, fo)
 	}
 
 	if fo, foErr := reverts.NewFailedOp(err); foErr == nil {
-		return nil, errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		return nil, errors.NewRPCError(reverts.RPCErrorCodeForFailedOp(fo.Reason), fo.Reason, fo)
 	}
 
 	return nil, err

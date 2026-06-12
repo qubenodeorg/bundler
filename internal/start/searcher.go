@@ -99,7 +99,7 @@ func SearcherMode() {
 		defer metricsCleanup()
 	}
 
-	ov := gas.NewDefaultOverhead()
+	ov := gas.NewDefaultOverheadForVersion(conf.EntryPointVersion)
 
 	mem, err := mempool.New(db)
 	if err != nil {
@@ -184,6 +184,7 @@ func SearcherMode() {
 		check.PaymasterDeposit(),
 		check.SimulateBatch(),
 		builder.SendUserOperation(),
+		rep.ProcessDrops(stake.GetStakeWithEthClient(eth)),
 		rep.IncOpsIncluded(),
 		check.Clean(),
 	)
@@ -191,11 +192,11 @@ func SearcherMode() {
 		log.Fatal(err)
 	}
 
-	// init Debug
+	// init Debug. debug_bundler_sendBundleNow must build one bundle from ALL
+	// eligible mempool ops, so the batch size is not overridden.
 	var d *client.Debug
 	if conf.DebugMode {
 		d = client.NewDebug(eoa, eth, mem, rep, b, chain, conf.SupportedEntryPoints[0], beneficiary)
-		b.SetMaxBatch(1)
 	}
 
 	// Init HTTP server

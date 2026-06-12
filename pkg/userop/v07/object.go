@@ -156,12 +156,22 @@ func (op *UserOperation) GetFactoryData() []byte {
 }
 
 // GetMaxGasAvailable returns the max amount of gas that can be consumed by this UserOperation.
-// v0.7 removes the 3x verificationGasLimit multiplier for paymasters.
+// v0.7 removes the 3x verificationGasLimit multiplier for paymasters and adds
+// the paymaster gas limits when a paymaster is set.
 func (op *UserOperation) GetMaxGasAvailable() *big.Int {
-	return big.NewInt(0).Add(
+	sum := big.NewInt(0).Add(
 		big.NewInt(0).Add(op.VerificationGasLimit, op.CallGasLimit),
 		op.PreVerificationGas,
 	)
+	if op.Paymaster != (common.Address{}) {
+		if op.PaymasterVerificationGasLimit != nil {
+			sum.Add(sum, op.PaymasterVerificationGasLimit)
+		}
+		if op.PaymasterPostOpGasLimit != nil {
+			sum.Add(sum, op.PaymasterPostOpGasLimit)
+		}
+	}
+	return sum
 }
 
 // GetMaxPrefund returns the max amount of wei required to pay for gas fees.
@@ -192,11 +202,13 @@ func (op *UserOperation) AccountGasLimits() [32]byte {
 }
 
 // GasFees packs maxFeePerGas and maxPriorityFeePerGas into bytes32.
+// GasFees packs maxPriorityFeePerGas (high 128 bits) and maxFeePerGas
+// (low 128 bits) per UserOperationLib.unpackGasFees.
 func (op *UserOperation) GasFees() [32]byte {
 	mf := new(big.Int).And(op.MaxFeePerGas, maxUint128)
 	mp := new(big.Int).And(op.MaxPriorityFeePerGas, maxUint128)
-	packed := new(big.Int).Lsh(mf, 128)
-	packed.Or(packed, mp)
+	packed := new(big.Int).Lsh(mp, 128)
+	packed.Or(packed, mf)
 	return common.BytesToHash(common.LeftPadBytes(packed.Bytes(), 32))
 }
 
@@ -307,41 +319,49 @@ func (op *UserOperation) GetPaymasterSignature() []byte {
 	return []byte{}
 }
 
-// MarshalJSON returns a JSON encoding of the UserOperation.
+// MarshalJSON returns a JSON encoding of the UserOperation. The factory and
+// paymaster field groups are optional per the ERC-4337 RPC spec and are
+// omitted when their address is unset, so the encoded op round-trips to the
+// same userOpHash.
 func (op *UserOperation) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
+	out := &struct {
 		Sender                        string `json:"sender"`
 		Nonce                         string `json:"nonce"`
-		Factory                       string `json:"factory"`
-		FactoryData                   string `json:"factoryData"`
+		Factory                       string `json:"factory,omitempty"`
+		FactoryData                   string `json:"factoryData,omitempty"`
 		CallData                      string `json:"callData"`
 		CallGasLimit                  string `json:"callGasLimit"`
 		VerificationGasLimit          string `json:"verificationGasLimit"`
 		PreVerificationGas            string `json:"preVerificationGas"`
 		MaxFeePerGas                  string `json:"maxFeePerGas"`
 		MaxPriorityFeePerGas          string `json:"maxPriorityFeePerGas"`
-		Paymaster                     string `json:"paymaster"`
-		PaymasterVerificationGasLimit string `json:"paymasterVerificationGasLimit"`
-		PaymasterPostOpGasLimit       string `json:"paymasterPostOpGasLimit"`
-		PaymasterData                 string `json:"paymasterData"`
+		Paymaster                     string `json:"paymaster,omitempty"`
+		PaymasterVerificationGasLimit string `json:"paymasterVerificationGasLimit,omitempty"`
+		PaymasterPostOpGasLimit       string `json:"paymasterPostOpGasLimit,omitempty"`
+		PaymasterData                 string `json:"paymasterData,omitempty"`
 		Signature                     string `json:"signature"`
 	}{
-		Sender:                        op.Sender.String(),
-		Nonce:                         hexutil.EncodeBig(op.Nonce),
-		Factory:                       op.Factory.String(),
-		FactoryData:                   hexutil.Encode(op.FactoryData),
-		CallData:                      hexutil.Encode(op.CallData),
-		CallGasLimit:                  hexutil.EncodeBig(op.CallGasLimit),
-		VerificationGasLimit:          hexutil.EncodeBig(op.VerificationGasLimit),
-		PreVerificationGas:            hexutil.EncodeBig(op.PreVerificationGas),
-		MaxFeePerGas:                  hexutil.EncodeBig(op.MaxFeePerGas),
-		MaxPriorityFeePerGas:          hexutil.EncodeBig(op.MaxPriorityFeePerGas),
-		Paymaster:                     op.Paymaster.String(),
-		PaymasterVerificationGasLimit: hexutil.EncodeBig(op.PaymasterVerificationGasLimit),
-		PaymasterPostOpGasLimit:       hexutil.EncodeBig(op.PaymasterPostOpGasLimit),
-		PaymasterData:                 hexutil.Encode(op.PaymasterData),
-		Signature:                     hexutil.Encode(op.Signature),
-	})
+		Sender:               op.Sender.String(),
+		Nonce:                hexutil.EncodeBig(op.Nonce),
+		CallData:             hexutil.Encode(op.CallData),
+		CallGasLimit:         hexutil.EncodeBig(op.CallGasLimit),
+		VerificationGasLimit: hexutil.EncodeBig(op.VerificationGasLimit),
+		PreVerificationGas:   hexutil.EncodeBig(op.PreVerificationGas),
+		MaxFeePerGas:         hexutil.EncodeBig(op.MaxFeePerGas),
+		MaxPriorityFeePerGas: hexutil.EncodeBig(op.MaxPriorityFeePerGas),
+		Signature:            hexutil.Encode(op.Signature),
+	}
+	if op.Factory != (common.Address{}) {
+		out.Factory = op.Factory.String()
+		out.FactoryData = hexutil.Encode(op.FactoryData)
+	}
+	if op.Paymaster != (common.Address{}) {
+		out.Paymaster = op.Paymaster.String()
+		out.PaymasterVerificationGasLimit = hexutil.EncodeBig(op.PaymasterVerificationGasLimit)
+		out.PaymasterPostOpGasLimit = hexutil.EncodeBig(op.PaymasterPostOpGasLimit)
+		out.PaymasterData = hexutil.Encode(op.PaymasterData)
+	}
+	return json.Marshal(out)
 }
 
 // ToMap returns the current UserOp struct as a map type.

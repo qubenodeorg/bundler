@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/zarbanio/bundler/pkg/entrypoint/methods"
+	rpcerrors "github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -34,7 +35,7 @@ func GetUserOperationByHash(
 ) (*HashLookupResult, error) {
 	if !IsValidUserOpHash(userOpHash) {
 		//lint:ignore ST1005 This needs to match the bundler test spec.
-		return nil, errors.New("Missing/invalid userOpHash")
+		return nil, rpcerrors.NewRPCError(rpcerrors.METHOD_NOT_FOUND, "Missing/invalid userOpHash", "Missing/invalid userOpHash")
 	}
 
 	it, err := filterUserOperationEvent(eth, userOpHash, entryPoint, blkRange)

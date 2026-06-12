@@ -3,6 +3,7 @@ package checks
 import (
 	"context"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -33,8 +34,55 @@ func SimulateValidationV07(
 	stakes simulation.EntityStakes,
 	version userop.Version,
 ) error {
+	// eth_call handleOps first: a validation-phase revert (FailedOp) carries
+	// the spec error code and the entity's revert reason, which the
+	// trace-based rules below cannot provide.
+	if err := callSimulateValidation(rpc, entryPoint, op, chainID, version); err != nil {
+		return err
+	}
+
 	// Try trace-based simulation (deep validation with opcode/storage checks)
 	return simulateWithTrace(rpc, entryPoint, op, chainID, ov, alt, isRIP7212Supported, tracer, stakes, version)
+}
+
+// callSimulateValidation surfaces validation-phase reverts of handleOps via a
+// plain eth_call. AA25 (invalid account nonce) is not an error here: ops with
+// future nonces are valid in the mempool while earlier ops are still pending.
+func callSimulateValidation(
+	rpc *rpc.Client,
+	entryPoint common.Address,
+	op userop.UserOperationInterface,
+	chainID *big.Int,
+	version userop.Version,
+) error {
+	delegateAddr := GetEIP7702Address(op.GetEIP7702Auth())
+
+	var err error
+	switch version {
+	case userop.V0_7:
+		_, err = v07sim.SimulateValidation(&v07sim.SimulateInput{
+			Rpc: rpc, EntryPoint: entryPoint, Op: op, ChainID: chainID,
+		})
+	case userop.V0_8:
+		_, err = v08sim.SimulateValidation(&v08sim.SimulateInput{
+			Rpc: rpc, EntryPoint: entryPoint, Op: op, ChainID: chainID,
+			DelegateAddress: delegateAddr,
+		})
+	case userop.V0_9:
+		_, err = v09sim.SimulateValidation(&v09sim.SimulateInput{
+			Rpc: rpc, EntryPoint: entryPoint, Op: op, ChainID: chainID,
+			DelegateAddress: delegateAddr,
+		})
+	default:
+		return nil
+	}
+	if err == nil || strings.Contains(err.Error(), "AA25") {
+		return nil
+	}
+	if rpcErr, ok := err.(*errors.RPCError); ok {
+		return rpcErr
+	}
+	return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, err.Error(), err.Error())
 }
 
 // simulateWithTrace uses debug_traceCall for validation simulation. It
@@ -58,7 +106,10 @@ func simulateWithTrace(
 
 	v06Op, ok := op.(*userop.UserOperation)
 	if !ok {
-		converted, convErr := gas.ConvertToV06(op)
+		// ConvertToV06Packed preserves the real paymaster gas limits; the trace
+		// runs handleOps, so a dummy zero paymasterVerificationGasLimit would
+		// make validatePaymasterUserOp run out of gas instead of validating.
+		converted, convErr := userop.ConvertToV06Packed(op)
 		if convErr != nil {
 			return errors.NewRPCError(
 				errors.BANNED_OPCODE,

@@ -28,6 +28,39 @@ var (
 		},
 	)
 	ValidatePaymasterUserOpSelector = hexutil.Encode(ValidatePaymasterUserOpMethod.ID)
+
+	// packedUserOpType is the v0.7+ PackedUserOperation struct, which changes
+	// the validatePaymasterUserOp selector relative to v0.6.
+	packedUserOpType, _ = abi.NewType("tuple", "", []abi.ArgumentMarshaling{
+		{Name: "sender", Type: "address"},
+		{Name: "nonce", Type: "uint256"},
+		{Name: "initCode", Type: "bytes"},
+		{Name: "callData", Type: "bytes"},
+		{Name: "accountGasLimits", Type: "bytes32"},
+		{Name: "preVerificationGas", Type: "uint256"},
+		{Name: "gasFees", Type: "bytes32"},
+		{Name: "paymasterAndData", Type: "bytes"},
+		{Name: "signature", Type: "bytes"},
+	})
+
+	PackedValidatePaymasterUserOpMethod = abi.NewMethod(
+		"validatePaymasterUserOp",
+		"validatePaymasterUserOp",
+		abi.Function,
+		"",
+		false,
+		false,
+		abi.Arguments{
+			{Name: "userOp", Type: packedUserOpType},
+			{Name: "userOpHash", Type: bytes32},
+			{Name: "maxCost", Type: uint256},
+		},
+		abi.Arguments{
+			{Name: "context", Type: bytes},
+			{Name: "validationData", Type: uint256},
+		},
+	)
+	PackedValidatePaymasterUserOpSelector = hexutil.Encode(PackedValidatePaymasterUserOpMethod.ID)
 )
 
 type validatePaymasterUserOpOutput struct {

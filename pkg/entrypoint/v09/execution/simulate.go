@@ -2,12 +2,9 @@ package execution
 
 import (
 	"context"
-	"math"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	"github.com/zarbanio/bundler/pkg/entrypoint/utils"
@@ -64,25 +61,32 @@ func toPackedOp(op userop.UserOperationInterface) (*epv09.PackedUserOperation, e
 	}, nil
 }
 
-func SimulateHandleOp(in *SimulateInput) error {
-	ep, err := epv09.NewV09(in.EntryPoint, ethclient.NewClient(in.Rpc))
-	if err != nil {
-		return err
-	}
-	auth, err := bind.NewKeyedTransactorWithChainID(utils.DummyPk, in.ChainID)
-	if err != nil {
-		return err
-	}
-	auth.GasLimit = math.MaxUint64
-	auth.NoSend = true
-
+// simulateHandleOpCall builds the EntryPointSimulations.simulateHandleOp
+// calldata and the state override set that swaps the simulations runtime in
+// at the EntryPoint address. simulateValidation/simulateHandleOp were removed
+// from the deployed contract in v0.7+, and a plain handleOps eth_call reverts
+// with AA24 for the dummy signatures used during gas estimation; the
+// simulations variant tolerates signature failure and reports it in the
+// returned ExecutionResult instead.
+func simulateHandleOpCall(in *SimulateInput) ([]byte, state.OverrideSet, error) {
 	packedOp, err := toPackedOp(in.Op)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
+	calldata, err := epv09.PackSimulateHandleOp(*packedOp, in.Target, in.Data)
+	if err != nil {
+		return nil, nil, err
+	}
+	code, err := epv09.SimulationsDeployedBytecode()
+	if err != nil {
+		return nil, nil, err
+	}
+	sos := state.WithCodeOverride(in.EntryPoint, code, in.Sos)
+	return calldata, sos, nil
+}
 
-	beneficiary := common.HexToAddress("0x")
-	tx, err := ep.HandleOps(auth, []epv09.PackedUserOperation{*packedOp}, beneficiary)
+func SimulateHandleOp(in *SimulateInput) error {
+	calldata, sos, err := simulateHandleOpCall(in)
 	if err != nil {
 		return err
 	}
@@ -90,9 +94,9 @@ func SimulateHandleOp(in *SimulateInput) error {
 	req := utils.EthCallReq{
 		From: common.HexToAddress("0x"),
 		To:   in.EntryPoint,
-		Data: tx.Data(),
+		Data: calldata,
 	}
-	err = in.Rpc.CallContext(context.Background(), nil, "eth_call", &req, "latest", in.Sos)
+	err = in.Rpc.CallContext(context.Background(), nil, "eth_call", &req, "latest", sos)
 
 	if err == nil {
 		return nil
@@ -103,7 +107,11 @@ func SimulateHandleOp(in *SimulateInput) error {
 	}
 
 	if fo, foErr := v09reverts.NewFailedOpWithRevert(err); foErr == nil {
-		return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, fo.Reason, fo)
+		reason := fo.Reason
+		if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+			reason = reason + ": " + inner
+		}
+		return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, reason, fo)
 	}
 
 	return err

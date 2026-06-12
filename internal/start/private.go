@@ -92,9 +92,14 @@ func PrivateMode() {
 		defer metricsCleanup()
 	}
 
-	ov := gas.NewDefaultOverhead()
+	ov := gas.NewDefaultOverheadForVersion(conf.EntryPointVersion)
+	// The PVG estimate is computed for the op as submitted to estimateGas, but
+	// the op later sent can differ slightly in byte content (e.g. a different
+	// sender deployed in between), shifting the calldata cost by a few gas per
+	// byte. A small buffer keeps returned estimates acceptable at send time.
+	ov.SetPreVerificationGasBufferFactor(1)
 	if conf.IsArbStackNetwork || config.ArbStackChains.Contains(chain.Uint64()) {
-		// ov.SetCalcPreVerificationGasFunc(gas.CalcArbitrumPVGWithEthClient(rpc, conf.SupportedEntryPoints[0]))
+		ov.SetCalcPreVerificationGasFunc(gas.CalcArbitrumPVGWithEthClient(rpc, conf.SupportedEntryPoints[0]))
 		ov.SetPreVerificationGasBufferFactor(16)
 	}
 
@@ -130,6 +135,7 @@ func PrivateMode() {
 	exp := expire.New(conf.MaxOpTTL)
 
 	relayer := relay.New(eoa, eth, chain, beneficiary, logr)
+	relayer.SetRpc(rpc)
 
 	rep := entities.New(db, eth, conf.ReputationConstants)
 
@@ -184,6 +190,7 @@ func PrivateMode() {
 		check.PaymasterDeposit(),
 		check.SimulateBatch(),
 		relayer.SendUserOperation(),
+		rep.ProcessDrops(stake.GetStakeWithEthClient(eth)),
 		rep.IncOpsIncluded(),
 		check.Clean(),
 	)
@@ -191,12 +198,12 @@ func PrivateMode() {
 		log.Fatal(err)
 	}
 
-	// init Debug
+	// init Debug. debug_bundler_sendBundleNow must build one bundle from ALL
+	// eligible mempool ops and only return once the bundle transaction is
+	// mined, so neither the batch size nor the receipt wait is overridden.
 	var d *client.Debug
 	if conf.DebugMode {
 		d = client.NewDebug(eoa, eth, mem, rep, b, chain, conf.SupportedEntryPoints[0], beneficiary)
-		b.SetMaxBatch(1)
-		relayer.SetWaitTimeout(0)
 	}
 
 	// Init HTTP server

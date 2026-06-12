@@ -19,8 +19,8 @@ func TestProcessTraceResult_TSTOREBannedV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (TSTORE banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TSTORE follows storage rules, not banned)", err)
 	}
 }
 
@@ -33,8 +33,8 @@ func TestProcessTraceResult_TLOADBannedV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].TLOAD = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (TLOAD banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TLOAD follows storage rules, not banned)", err)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestProcessTraceResult_UnstakedBannedTSTOREV09(t *testing.T) {
 	res.CallsFromEntryPoint[0].TSTORE = 1
 
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (unstaked TSTORE banned)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (OP-070: TSTORE follows storage rules, not banned)", err)
 	}
 }

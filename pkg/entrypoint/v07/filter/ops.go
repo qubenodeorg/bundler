@@ -25,7 +25,7 @@ var (
 		{Name: "signature", InternalType: "Signature", Type: "bytes"},
 	}
 
-	packedUserOpArr, _  = abi.NewType("tuple[]", "ops", packedUserOpPrimitives)
+	packedUserOpArr, _ = abi.NewType("tuple[]", "ops", packedUserOpPrimitives)
 )
 
 type packedUserOp struct {
@@ -53,16 +53,18 @@ func unpackPackedOps(data []byte) ([]packedUserOp, error) {
 		return nil, fmt.Errorf("unpackPackedOps: invalid args length: expected 2, got %d", len(unpacked))
 	}
 
+	// The assertion target must match the struct type geth's abi package
+	// builds via reflection, including the json tags it attaches.
 	opsRaw, ok := unpacked[0].([]struct {
-		Sender             common.Address
-		Nonce              *big.Int
-		InitCode           []byte
-		CallData           []byte
-		AccountGasLimits   [32]byte
-		PreVerificationGas *big.Int
-		GasFees            [32]byte
-		PaymasterAndData   []byte
-		Signature          []byte
+		Sender             common.Address `json:"sender"`
+		Nonce              *big.Int       `json:"nonce"`
+		InitCode           []byte         `json:"initCode"`
+		CallData           []byte         `json:"callData"`
+		AccountGasLimits   [32]byte       `json:"accountGasLimits"`
+		PreVerificationGas *big.Int       `json:"preVerificationGas"`
+		GasFees            [32]byte       `json:"gasFees"`
+		PaymasterAndData   []byte         `json:"paymasterAndData"`
+		Signature          []byte         `json:"signature"`
 	})
 	if !ok {
 		return nil, fmt.Errorf("unpackPackedOps: cannot assert type")
@@ -100,9 +102,11 @@ func packedOpToV07(p packedUserOp) *v07.UserOperation {
 		PaymasterPostOpGasLimit:       big.NewInt(0),
 		PaymasterData:                 []byte{},
 		VerificationGasLimit:          big.NewInt(0).And(big.NewInt(0).Rsh(big.NewInt(0).SetBytes(p.AccountGasLimits[:]), 128), maxUint128),
-		CallGasLimit:                   big.NewInt(0).And(big.NewInt(0).SetBytes(p.AccountGasLimits[:]), maxUint128),
-		MaxFeePerGas:                  big.NewInt(0).And(big.NewInt(0).Rsh(big.NewInt(0).SetBytes(p.GasFees[:]), 128), maxUint128),
-		MaxPriorityFeePerGas:          big.NewInt(0).And(big.NewInt(0).SetBytes(p.GasFees[:]), maxUint128),
+		CallGasLimit:                  big.NewInt(0).And(big.NewInt(0).SetBytes(p.AccountGasLimits[:]), maxUint128),
+		// gasFees: maxPriorityFeePerGas high 128 bits, maxFeePerGas low
+		// (UserOperationLib.unpackGasFees).
+		MaxPriorityFeePerGas: big.NewInt(0).And(big.NewInt(0).Rsh(big.NewInt(0).SetBytes(p.GasFees[:]), 128), maxUint128),
+		MaxFeePerGas:         big.NewInt(0).And(big.NewInt(0).SetBytes(p.GasFees[:]), maxUint128),
 	}
 
 	if len(p.InitCode) >= 20 {

@@ -7,22 +7,25 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-func TestBannedOpCodesContainsTSTORE(t *testing.T) {
-	if !BannedOpCodeSet.Contains("TSTORE") {
-		t.Fatal("BannedOpCodeSet should contain TSTORE (OP-070)")
+// OP-070: transient storage follows the same validation rules as persistent
+// storage, so TSTORE/TLOAD must NOT be outright banned; the storage slot
+// access rules govern them instead.
+func TestBannedOpCodesExcludesTSTORE(t *testing.T) {
+	if BannedOpCodeSet.Contains("TSTORE") {
+		t.Fatal("BannedOpCodeSet must not contain TSTORE (OP-070)")
 	}
 }
 
-func TestBannedOpCodesContainsTLOAD(t *testing.T) {
-	if !BannedOpCodeSet.Contains("TLOAD") {
-		t.Fatal("BannedOpCodeSet should contain TLOAD (OP-070)")
+func TestBannedOpCodesExcludesTLOAD(t *testing.T) {
+	if BannedOpCodeSet.Contains("TLOAD") {
+		t.Fatal("BannedOpCodeSet must not contain TLOAD (OP-070)")
 	}
 }
 
 func TestBannedOpCodesHelper(t *testing.T) {
 	s := BannedOpCodes()
-	if !s.Contains("TSTORE") {
-		t.Fatal("BannedOpCodes() should include TSTORE")
+	if !s.Contains("GASPRICE") {
+		t.Fatal("BannedOpCodes() should include GASPRICE")
 	}
 }
 

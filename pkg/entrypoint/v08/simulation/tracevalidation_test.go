@@ -204,7 +204,7 @@ func TestProcessTraceResult_UnstakedPaymasterWithContextV08(t *testing.T) {
 			Type:   "CALL",
 			From:   common.HexToAddress("0x"),
 			To:     paymaster,
-			Method: methods.ValidatePaymasterUserOpSelector,
+			Method: methods.PackedValidatePaymasterUserOpSelector,
 			Value:  "0x0",
 			Gas:    50000,
 		},

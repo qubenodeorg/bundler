@@ -5,10 +5,14 @@ package entities
 import (
 	stdErr "errors"
 	"fmt"
+	"strings"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/zarbanio/bundler/internal/dbutils"
+	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
 	"github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/modules"
 )
@@ -156,7 +160,31 @@ func (r *Reputation) IncOpsSeen() modules.UserOpHandlerFunc {
 	return func(ctx *modules.UserOpHandlerCtx) error {
 		return r.db.Update(func(txn *badger.Txn) error {
 			var err error
-			err = stdErr.Join(err, incrementOpsSeenByEntity(txn, ctx.UserOp.GetSender()))
+			// When this op replaces a pending one (same sender and nonce),
+			// the previous op's increments are reverted so replacement does
+			// not inflate opsSeen and a swapped paymaster/factory does not
+			// keep the old entity's count.
+			for _, pending := range ctx.GetPendingSenderOps() {
+				if pending.Nonce.Cmp(ctx.UserOp.GetNonce()) != 0 {
+					continue
+				}
+				if sd := ctx.GetSenderDepositInfo(); sd != nil && sd.Staked {
+					err = stdErr.Join(err, decrementOpsSeenByEntity(txn, pending.Sender))
+				}
+				if oldFactory := pending.GetFactory(); oldFactory != common.HexToAddress("0x") {
+					err = stdErr.Join(err, decrementOpsSeenByEntity(txn, oldFactory))
+				}
+				if oldPaymaster := pending.GetPaymaster(); oldPaymaster != common.HexToAddress("0x") {
+					err = stdErr.Join(err, decrementOpsSeenByEntity(txn, oldPaymaster))
+				}
+				break
+			}
+
+			// EREP-030: only a staked account is accountable for failures, so
+			// an unstaked sender's opsSeen is not tracked.
+			if sd := ctx.GetSenderDepositInfo(); sd != nil && sd.Staked {
+				err = stdErr.Join(err, incrementOpsSeenByEntity(txn, ctx.UserOp.GetSender()))
+			}
 
 			factory := ctx.UserOp.GetFactory()
 			if factory != common.HexToAddress("0x") {
@@ -207,6 +235,108 @@ func (r *Reputation) IncOpsIncluded() modules.BatchHandlerFunc {
 			return incrementOpsIncludedByEntity(txn, c)
 		})
 	}
+}
+
+// crashedHandleOpsPenalty is the opsSeen penalty applied to an entity blamed
+// for a userOp that crashed bundle creation, effectively banning it.
+const crashedHandleOpsPenalty = 10000
+
+// ProcessDrops returns a BatchHandler that applies the extended reputation
+// rules to ops dropped during bundling (ctx.PendingRemoval):
+//   - EREP-015: a paymaster's opsSeen is rolled back when the drop was caused
+//     by a factory or account failure (AA1*/AA2* reasons), so it is not
+//     penalized for failures that are not its own.
+//   - EREP-020: a staked factory is accountable for its account's failure and
+//     takes the crashed-handleOps penalty.
+func (r *Reputation) ProcessDrops(gs stake.GetStakeFunc) modules.BatchHandlerFunc {
+	return func(ctx *modules.BatchHandlerCtx) error {
+		return r.db.Update(func(txn *badger.Txn) error {
+			for _, item := range ctx.PendingRemoval {
+				accountOrFactoryFault := strings.Contains(item.Reason, "AA1") ||
+					strings.Contains(item.Reason, "AA2")
+				if !accountOrFactoryFault {
+					// EREP-030: a staked account is accountable for failures
+					// in other entities, so a paymaster fault (AA3*) is
+					// blamed on a staked sender and the paymaster's opsSeen
+					// is rolled back.
+					paymasterFault := strings.Contains(item.Reason, "AA3") ||
+						strings.Contains(item.Reason, "insufficient paymaster deposit")
+					if paymasterFault {
+						paymaster := item.Op.GetPaymaster()
+						if paymaster != common.HexToAddress("0x") {
+							dep, err := gs(ctx.EntryPoint, item.Op.Sender)
+							if err == nil && dep != nil && dep.Staked {
+								if err := decrementOpsSeenByEntity(txn, paymaster); err != nil {
+									return err
+								}
+							}
+						}
+					}
+					continue
+				}
+
+				paymaster := item.Op.GetPaymaster()
+				if paymaster != common.HexToAddress("0x") {
+					if err := decrementOpsSeenByEntity(txn, paymaster); err != nil {
+						return err
+					}
+				}
+
+				factory := item.Op.GetFactory()
+				if factory != common.HexToAddress("0x") && strings.Contains(item.Reason, "AA2") {
+					dep, err := gs(ctx.EntryPoint, factory)
+					if err == nil && dep != nil && dep.Staked {
+						if err := addOpsSeenByEntity(txn, factory, crashedHandleOpsPenalty); err != nil {
+							return err
+						}
+					}
+				}
+			}
+			return nil
+		})
+	}
+}
+
+// Dump returns the reputation entry of every known entity in the shape
+// expected by debug_bundler_dumpReputation.
+func (r *Reputation) Dump() ([]map[string]any, error) {
+	res := []map[string]any{}
+	err := r.db.Update(func(txn *badger.Txn) error {
+		opts := badger.DefaultIteratorOptions
+		opts.PrefetchValues = false
+		it := txn.NewIterator(opts)
+		prefix := []byte(opsCountPrefix)
+		addrs := []common.Address{}
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			vals := dbutils.SplitValues(string(it.Item().Key()))
+			addrs = append(addrs, common.HexToAddress(vals[len(vals)-1]))
+		}
+		it.Close()
+
+		for _, addr := range addrs {
+			opsSeen, opsIncluded, err := getOpsCountByEntity(txn, addr)
+			if err != nil {
+				return err
+			}
+			st, err := getStatus(txn, addr, r.repConst)
+			if err != nil {
+				return err
+			}
+			res = append(res, map[string]any{
+				"address":     addr.String(),
+				"opsSeen":     hexutil.EncodeUint64(uint64(opsSeen)),
+				"opsIncluded": hexutil.EncodeUint64(uint64(opsIncluded)),
+				"status":      int(st),
+			})
+		}
+		return nil
+	})
+	return res, err
+}
+
+// Clear removes the reputation entries of all known entities.
+func (r *Reputation) Clear() error {
+	return r.db.DropPrefix([]byte(opsCountPrefix))
 }
 
 func (r *Reputation) Override(entries []*ReputationOverride) error {

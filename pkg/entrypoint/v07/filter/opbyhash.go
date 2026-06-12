@@ -2,13 +2,13 @@ package filter
 
 import (
 	"context"
-	"errors"
 	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
+	rpcerrors "github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/userop/v07"
 )
 
@@ -28,7 +28,7 @@ func GetUserOperationByHash(
 	blkRange uint64,
 ) (*HashLookupResult, error) {
 	if !IsValidUserOpHash(userOpHash) {
-		return nil, errors.New("Missing/invalid userOpHash")
+		return nil, rpcerrors.NewRPCError(rpcerrors.INVALID_FIELDS, "Missing/invalid userOpHash", "Missing/invalid userOpHash")
 	}
 
 	it, err := filterUserOperationEvent(eth, userOpHash, entryPoint, blkRange)
@@ -51,7 +51,7 @@ func GetUserOperationByHash(
 		}
 
 		hex := hexutil.Encode(tx.Data())
-		if strings.HasPrefix(hex, "0x1fad948c") { // handleOps selector for v07
+		if strings.HasPrefix(hex, "0x765e827f") { // handleOps(PackedUserOperation[],address) selector (v0.7+)
 			data := common.Hex2Bytes(hex[10:])
 			ops, err := unpackPackedOps(data)
 			if err != nil {

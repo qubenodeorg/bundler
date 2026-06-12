@@ -1,0 +1,52 @@
+name: e2e
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.20"
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Cache v0.9 contract artifacts
+        uses: actions/cache@v4
+        with:
+          path: e2e/artifacts
+          key: e2e-artifacts-${{ hashFiles('e2e/src/fetch-artifacts.ts') }}
+
+      # The suite runs against geth --dev (pulled as a pinned docker image by
+      # run.sh when no local geth binary exists); no fork RPC URLs are needed.
+      - name: Run e2e suite
+        run: scripts/e2e/run.sh
+
+      - name: Upload geth + bundler logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: tmp/e2e/*.log
+          if-no-files-found: ignore

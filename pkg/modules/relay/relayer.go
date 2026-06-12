@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/go-logr/logr"
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	"github.com/zarbanio/bundler/pkg/entrypoint/transaction"
@@ -33,6 +34,7 @@ import (
 type Relayer struct {
 	eoa         *signer.EOA
 	eth         *ethclient.Client
+	rpc         *rpc.Client
 	chainID     *big.Int
 	beneficiary common.Address
 	logger      logr.Logger
@@ -66,6 +68,12 @@ func (r *Relayer) SetWaitTimeout(timeout time.Duration) {
 	r.waitTimeout = timeout
 }
 
+// SetRpc provides the raw RPC client required to submit EIP-7702 type-4 bundle
+// transactions, which the bound ethclient cannot encode.
+func (r *Relayer) SetRpc(c *rpc.Client) {
+	r.rpc = c
+}
+
 // estimateHandleOpsGas dispatches to the version-appropriate EstimateHandleOpsGas implementation.
 func estimateHandleOpsGas(
 	version userop.Version,
@@ -92,8 +100,22 @@ func handleOps(version userop.Version, opts *transaction.Opts) (txnHash string, 
 	case userop.V0_7:
 		txn, err = v07txn.HandleOps(toV07Opts(opts))
 	case userop.V0_8:
+		if v08txn.BatchHasAuth(opts.Batch) {
+			hash, err := v08txn.HandleOps7702(toV08Opts(opts))
+			if err != nil {
+				return "", err
+			}
+			return hash.String(), nil
+		}
 		txn, err = v08txn.HandleOps(toV08Opts(opts))
 	case userop.V0_9:
+		if v09txn.BatchHasAuth(opts.Batch) {
+			hash, err := v09txn.HandleOps7702(toV09Opts(opts))
+			if err != nil {
+				return "", err
+			}
+			return hash.String(), nil
+		}
 		txn, err = v09txn.HandleOps(toV09Opts(opts))
 	default:
 		txn, err = transaction.HandleOps(opts)
@@ -128,6 +150,7 @@ func toV08Opts(o *transaction.Opts) *v08txn.Opts {
 	return &v08txn.Opts{
 		EOA:         o.EOA,
 		Eth:         o.Eth,
+		Rpc:         o.Rpc,
 		ChainID:     o.ChainID,
 		EntryPoint:  o.EntryPoint,
 		Batch:       o.Batch,
@@ -145,6 +168,7 @@ func toV09Opts(o *transaction.Opts) *v09txn.Opts {
 	return &v09txn.Opts{
 		EOA:         o.EOA,
 		Eth:         o.Eth,
+		Rpc:         o.Rpc,
 		ChainID:     o.ChainID,
 		EntryPoint:  o.EntryPoint,
 		Batch:       o.Batch,
@@ -166,6 +190,7 @@ func (r *Relayer) SendUserOperation() modules.BatchHandlerFunc {
 		opts := &transaction.Opts{
 			EOA:         r.eoa,
 			Eth:         r.eth,
+			Rpc:         r.rpc,
 			ChainID:     ctx.ChainID,
 			EntryPoint:  ctx.EntryPoint,
 			Batch:       ctx.Batch,

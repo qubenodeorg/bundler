@@ -3,13 +3,10 @@ package execution
 import (
 	"context"
 	"fmt"
-	"math"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/ethclient"
 	ethRpc "github.com/ethereum/go-ethereum/rpc"
 	v06exec "github.com/zarbanio/bundler/pkg/entrypoint/execution"
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
@@ -42,24 +39,15 @@ type TraceOutput struct {
 }
 
 func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
-	ep, err := epv09.NewV09(in.EntryPoint, ethclient.NewClient(in.Rpc))
-	if err != nil {
-		return nil, err
-	}
-	auth, err := bind.NewKeyedTransactorWithChainID(utils.DummyPk, in.ChainID)
-	if err != nil {
-		return nil, err
-	}
-	auth.GasLimit = math.MaxUint64
-	auth.NoSend = true
-
-	packedOp, err := toPackedOp(in.Op)
-	if err != nil {
-		return nil, err
-	}
-
-	beneficiary := common.HexToAddress("0x")
-	tx, err := ep.HandleOps(auth, []epv09.PackedUserOperation{*packedOp}, beneficiary)
+	calldata, sos, err := simulateHandleOpCall(&SimulateInput{
+		Rpc:        in.Rpc,
+		EntryPoint: in.EntryPoint,
+		Op:         in.Op,
+		Sos:        in.Sos,
+		ChainID:    in.ChainID,
+		Target:     in.Target,
+		Data:       in.Data,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -76,11 +64,11 @@ func TraceSimulateHandleOp(in *TraceInput) (*TraceOutput, error) {
 	req := utils.TraceCallReq{
 		From:         common.HexToAddress("0x"),
 		To:           in.EntryPoint,
-		Data:         tx.Data(),
+		Data:         calldata,
 		MaxFeePerGas: hexutil.Big(*mf),
 	}
 	opts := utils.TraceCallOpts{
-		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), in.Sos),
+		StateOverrides: state.WithMaxBalanceOverride(common.HexToAddress("0x"), sos),
 	}
 
 	var callTrace *tracer.BundlerExecutionReturn

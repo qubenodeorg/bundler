@@ -9,10 +9,21 @@ import {
 import type { V09Authorization, V09UserOperation } from "./v09-userop.js";
 import { getUserOpHash } from "./v09-userop.js";
 
+// DUMMY_SIGNATURE is the placeholder used for gas estimation. It must be a
+// structurally valid ECDSA signature (low-s, v ∈ {27, 28}, recovers to a
+// non-zero address): SimpleAccount v0.9 verifies with OpenZeppelin
+// ECDSA.recover, which hard-reverts on malformed input — e.g. 65 bytes of
+// 0xee has s > N/2 and trips ECDSAInvalidSignatureS, surfacing as
+// "AA23 reverted" — instead of returning a recoverable signature mismatch.
+// Signing a fixed digest with a throwaway key is deterministic (RFC 6979).
+export const DUMMY_SIGNATURE = new Wallet(
+  "0x" + "11".repeat(32),
+).signingKey.sign(keccak256("0x6465616462656566")).serialized;
+
 // signUserOp produces the SimpleAccount ECDSA signature over the userOpHash.
-// The contract verifies with ECDSA.recover(toEthSignedMessageHash(hash), sig),
-// so we sign with personal_sign semantics (ethers Wallet.signMessage handles
-// the "\x19Ethereum Signed Message:\n32" prefix).
+// Since v0.8 the userOpHash is an ERC-712 typed-data hash and SimpleAccount
+// verifies with ECDSA.recover(userOpHash, sig) directly — no
+// "\x19Ethereum Signed Message" prefix — so we sign the raw digest.
 export async function signUserOp(
   op: V09UserOperation,
   wallet: Wallet,
@@ -20,8 +31,7 @@ export async function signUserOp(
   chainId: bigint,
 ): Promise<string> {
   const hash = getUserOpHash(op, entryPoint, chainId);
-  const sig = await wallet.signMessage(getBytes(hash));
-  return sig;
+  return wallet.signingKey.sign(getBytes(hash)).serialized;
 }
 
 // signEip7702Authorization signs a chain/address/nonce authorization tuple per

@@ -13,6 +13,11 @@ type hexDataErrorWrapper struct {
 // with rpc.DataError. This is useful for parsing output from a debug_traceCall that resulted in a transaction
 // revert.
 func ParseHexToRpcDataError(hex string) (rpc.DataError, error) {
+	// An empty output (e.g. a successful handleOps trace) decodes to an empty
+	// data error that simply matches no revert type downstream.
+	if hex == "" {
+		hex = "0x"
+	}
 	if _, err := common.ParseHexOrString(hex); err != nil {
 		return nil, err
 	}

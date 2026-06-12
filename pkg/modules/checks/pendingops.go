@@ -39,7 +39,10 @@ func ValidatePendingOps(
 	if len(penOps) > 0 {
 		var oldOp *userop.UserOperation
 		for _, penOp := range penOps {
-			if op.Nonce.Cmp(penOp.Nonce) == 0 {
+			// The mempool indexes pending ops by every entity role, so penOps
+			// can include ops where our sender is only a factory/paymaster;
+			// replacement rules apply to same-sender ops exclusively.
+			if penOp.Sender == op.Sender && op.Nonce.Cmp(penOp.Nonce) == 0 {
 				oldOp = penOp
 			}
 		}
@@ -69,7 +72,9 @@ func ValidatePendingOpsV07(
 	if len(penOps) > 0 {
 		var oldOp *userop.UserOperation
 		for _, penOp := range penOps {
-			if nonce.Cmp(penOp.Nonce) == 0 {
+			// Same-sender ops only; penOps can include ops where our sender is
+			// only a factory/paymaster (see ValidatePendingOps).
+			if penOp.Sender == op.GetSender() && nonce.Cmp(penOp.Nonce) == 0 {
 				oldOp = penOp
 			}
 		}

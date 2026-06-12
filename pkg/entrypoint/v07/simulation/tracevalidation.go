@@ -2,7 +2,6 @@ package simulation
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -37,6 +36,9 @@ type TraceInput struct {
 type TraceOutput struct {
 	TouchedContracts []common.Address
 	AltMempoolIds    []string
+	// Trace is the raw collector output the validation rules were evaluated
+	// against; batch-level cross-op rules (e.g. STO-041) consume it.
+	Trace *tracer.BundlerCollectorReturn
 }
 
 func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
@@ -99,7 +101,36 @@ func TraceSimulateValidation(in *TraceInput) (*TraceOutput, error) {
 		res = &ret
 	}
 
-	return ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, res, common.Address{})
+	return ProcessTraceResultWithRules(
+		in.Op, in.EntryPoint, in.Stakes, res, common.Address{}, in.IsRIP7212Supported, in.AltMempools,
+	)
+}
+
+// ProcessTraceResultWithRules runs ProcessTraceResult and then the shared
+// per-entity ERC-7562 rules (CREATE2 restrictions and storage slot access).
+func ProcessTraceResultWithRules(
+	op *userop.UserOperation,
+	entryPoint common.Address,
+	stakes simutils.EntityStakes,
+	res *tracer.BundlerCollectorReturn,
+	delegateAddr common.Address,
+	isRIP7212Supported bool,
+	alt *altmempools.Directory,
+) (*TraceOutput, error) {
+	out, err := ProcessTraceResult(op, entryPoint, stakes, res, delegateAddr)
+	if err != nil {
+		return nil, err
+	}
+	knownEntity, err := simutils.NewKnownEntity(op, res, stakes, delegateAddr)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := simutils.ValidateEntityRules(userop.V0_7, op, entryPoint, isRIP7212Supported, alt, stakes, res, knownEntity)
+	if err != nil {
+		return nil, err
+	}
+	out.AltMempoolIds = append(out.AltMempoolIds, ids...)
+	return out, nil
 }
 
 func ProcessTraceResult(
@@ -137,17 +168,13 @@ func ProcessTraceResult(
 		}
 	}
 
+	// Note: EREP-050 (unstaked paymaster must not return context) is not
+	// enforced for v0.7 — the v0.7 spec dropped it (the bundler-spec-tests
+	// releases/v0.7 suite has it as a "regression" case expecting acceptance)
+	// before v0.8 reinstated it.
 	callStack := simutils.NewCallStack(res.Calls)
 	for _, call := range callStack {
-		if call.Method == methods.ValidatePaymasterUserOpSelector {
-			out, err := methods.DecodeValidatePaymasterUserOpOutput(call.Return)
-			if err != nil {
-				return nil, fmt.Errorf("unexpected tracing result: %s", err)
-			}
-			if len(out.Context) != 0 && !knownEntity["paymaster"].IsStaked {
-				return nil, errors.New("unstaked paymaster must not return context")
-			}
-		} else if call.To == entryPoint && call.Method == methods.BalanceOfSelector {
+		if call.To == entryPoint && call.Method == methods.BalanceOfSelector {
 			return nil, fmt.Errorf(
 				"%s cannot call balanceOf on EntryPoint",
 				simutils.Addr2KnownEntity(op, call.From),
@@ -164,5 +191,6 @@ func ProcessTraceResult(
 	return &TraceOutput{
 		TouchedContracts: ic.ToSlice(),
 		AltMempoolIds:    altMempoolIds,
+		Trace:            res,
 	}, nil
 }

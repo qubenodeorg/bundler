@@ -52,6 +52,47 @@ type UserOperation struct {
 	MaxPriorityFeePerGas *big.Int       `json:"maxPriorityFeePerGas" mapstructure:"maxPriorityFeePerGas" validate:"required"`
 	PaymasterAndData     []byte         `json:"paymasterAndData"     mapstructure:"paymasterAndData"     validate:"required"`
 	Signature            []byte         `json:"signature"            mapstructure:"signature"            validate:"required"`
+
+	// EIP7702Auth carries the sender's EIP-7702 authorization tuple for v0.8+
+	// ops stored in the mempool's packed legacy shape, so the bundler can build
+	// the type-4 transaction. In-memory only: excluded from Pack/hashing and
+	// from the JSON wire format.
+	EIP7702Auth *Authorization `json:"-" mapstructure:"-"`
+}
+
+// CoreOp is the canonical 11-field v0.6 UserOperation tuple. It is
+// structurally identical to the generated ABI binding structs, so values can
+// be converted directly even though UserOperation itself carries extra
+// in-memory fields.
+type CoreOp struct {
+	Sender               common.Address
+	Nonce                *big.Int
+	InitCode             []byte
+	CallData             []byte
+	CallGasLimit         *big.Int
+	VerificationGasLimit *big.Int
+	PreVerificationGas   *big.Int
+	MaxFeePerGas         *big.Int
+	MaxPriorityFeePerGas *big.Int
+	PaymasterAndData     []byte
+	Signature            []byte
+}
+
+// Core returns the op's canonical v0.6 tuple for ABI binding conversions.
+func (op *UserOperation) Core() CoreOp {
+	return CoreOp{
+		Sender:               op.Sender,
+		Nonce:                op.Nonce,
+		InitCode:             op.InitCode,
+		CallData:             op.CallData,
+		CallGasLimit:         op.CallGasLimit,
+		VerificationGasLimit: op.VerificationGasLimit,
+		PreVerificationGas:   op.PreVerificationGas,
+		MaxFeePerGas:         op.MaxFeePerGas,
+		MaxPriorityFeePerGas: op.MaxPriorityFeePerGas,
+		PaymasterAndData:     op.PaymasterAndData,
+		Signature:            op.Signature,
+	}
 }
 
 // GetSender returns the sender address.
@@ -99,9 +140,12 @@ func (op *UserOperation) GetSignature() []byte {
 	return op.Signature
 }
 
-// GetEIP7702Auth returns nil for v0.6.
+// GetEIP7702Auth returns the in-memory EIP-7702 authorization, if any.
 func (op *UserOperation) GetEIP7702Auth() interface{} {
-	return nil
+	if op.EIP7702Auth == nil {
+		return nil
+	}
+	return op.EIP7702Auth
 }
 
 // GetPaymasterVerificationGasLimit returns 0 for v0.6.

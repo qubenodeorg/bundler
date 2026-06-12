@@ -24,10 +24,6 @@ type storageSlots mapset.Set[string]
 
 type storageSlotsByEntity map[common.Address]storageSlots
 
-func newStorageSlotsByEntity(stakes EntityStakes, keccak []string) storageSlotsByEntity {
-	return NewStorageSlotsByEntity(stakes, keccak)
-}
-
 // NewStorageSlotsByEntity creates a storage slot map keyed by entity address.
 func NewStorageSlotsByEntity(stakes EntityStakes, keccak []string) storageSlotsByEntity {
 	storageSlotsByEntity := make(storageSlotsByEntity)
@@ -63,6 +59,10 @@ type storageSlotsValidator struct {
 	// Parameters of specific entities required for all validation
 	SenderSlots     storageSlots
 	FactoryIsStaked bool
+	// LegacySTO022 selects the pre-v0.8 reading of STO-022, where a staked
+	// factory only covers the sender itself and every other entity needs its
+	// own stake to touch sender-associated storage during deployment.
+	LegacySTO022 bool
 
 	// Parameters of the entity under validation
 	EntityName            string
@@ -138,8 +138,12 @@ func (v *storageSlotsValidator) Process() ([]string, error) {
 
 			for _, slot := range slots {
 				if isAssociatedWith(senderSlots, slot) {
-					if (len(v.Op.InitCode) > 0 && !v.FactoryIsStaked) ||
-						(len(v.Op.InitCode) > 0 && v.FactoryIsStaked && v.EntityAddr != v.Op.Sender) {
+					// STO-022: sender-associated storage access during account
+					// deployment requires a staked factory; otherwise the
+					// accessing entity must be staked. Pre-v0.8 (LegacySTO022)
+					// the staked factory only covers the sender itself.
+					if len(v.Op.InitCode) > 0 &&
+						(!v.FactoryIsStaked || (v.LegacySTO022 && v.EntityAddr != v.Op.Sender)) {
 						mustStakeSlot = slot
 					} else {
 						continue
@@ -148,7 +152,10 @@ func (v *storageSlotsValidator) Process() ([]string, error) {
 					v.EntityName,
 					addr2KnownEntity(v.Op, addr),
 					slot,
-				); (isAssociatedWith(entitySlots, slot) || mode == accessModeRead) && len(amIds) == 0 {
+					// STO-031: an entity may access its own storage when staked,
+					// hence addr == v.EntityAddr requires stake instead of being
+					// forbidden outright.
+				); (addr == v.EntityAddr || isAssociatedWith(entitySlots, slot) || mode == accessModeRead) && len(amIds) == 0 {
 					mustStakeSlot = slot
 				} else if len(amIds) > 0 {
 					altMempoolIds = append(altMempoolIds, amIds...)

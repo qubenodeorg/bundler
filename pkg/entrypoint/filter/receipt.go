@@ -2,13 +2,13 @@ package filter
 
 import (
 	"context"
-	"errors"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	rpcerrors "github.com/zarbanio/bundler/pkg/errors"
 )
 
 type ParsedTransaction struct {
@@ -47,7 +47,7 @@ func GetUserOperationReceipt(
 ) (*UserOperationReceipt, error) {
 	if !IsValidUserOpHash(userOpHash) {
 		//lint:ignore ST1005 This needs to match the bundler test spec.
-		return nil, errors.New("Missing/invalid userOpHash")
+		return nil, rpcerrors.NewRPCError(rpcerrors.METHOD_NOT_FOUND, "Missing/invalid userOpHash", "Missing/invalid userOpHash")
 	}
 
 	it, err := filterUserOperationEvent(eth, userOpHash, entryPoint, blkRange)

@@ -126,5 +126,3 @@ func TestSuggestMeanGasPriceEmptyBatch(t *testing.T) {
 		t.Fatalf("got %d, want %d", got.Int64(), gasPrice.Int64())
 	}
 }
-
-

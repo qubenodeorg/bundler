@@ -20,7 +20,7 @@ func GetHash(
 
 	hash, err := pm.GetHash(
 		&bind.CallOpts{},
-		UserOperation(*op),
+		UserOperation(op.Core()),
 		data.ValidUntil,
 		data.ValidAfter,
 		data.ERC20Token,

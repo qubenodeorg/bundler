@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/zarbanio/bundler/pkg/entrypoint"
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
@@ -25,6 +26,7 @@ type Opts struct {
 	// Options for the network
 	EOA     *signer.EOA
 	Eth     *ethclient.Client
+	Rpc     *rpc.Client
 	ChainID *big.Int
 
 	// Options for the EntryPoint
@@ -44,7 +46,7 @@ type Opts struct {
 func toAbiType(batch []*userop.UserOperation) []entrypoint.UserOperation {
 	ops := []entrypoint.UserOperation{}
 	for _, op := range batch {
-		ops = append(ops, entrypoint.UserOperation(*op))
+		ops = append(ops, entrypoint.UserOperation(op.Core()))
 	}
 
 	return ops

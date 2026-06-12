@@ -14,10 +14,15 @@ import (
 	"github.com/zarbanio/bundler/pkg/altmempools"
 	"github.com/zarbanio/bundler/pkg/entrypoint"
 	"github.com/zarbanio/bundler/pkg/entrypoint/simulation"
+	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
+	v07sim "github.com/zarbanio/bundler/pkg/entrypoint/v07/simulation"
+	v08sim "github.com/zarbanio/bundler/pkg/entrypoint/v08/simulation"
+	v09sim "github.com/zarbanio/bundler/pkg/entrypoint/v09/simulation"
 	"github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/tracer"
 
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
 	"github.com/zarbanio/bundler/pkg/userop"
@@ -99,7 +104,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 				return ValidateVerificationGasV07(op, s.ov, s.maxVerificationGas)
 			})
 			g.Go(func() error {
-				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.Version)
+				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.GetPendingPaymasterOps(), ctx.Version)
 			})
 			g.Go(func() error {
 				return ValidatePaymasterData(op, ctx.Version)
@@ -110,9 +115,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 			g.Go(func() error {
 				return ValidatePaymasterPostOpGasLimit(op)
 			})
-			g.Go(func() error {
-				return ValidatePaymasterSignature(op, ctx.Version)
-			})
+			g.Go(func() error { return ValidateEIP7702Auth(op, ctx.ChainID) })
 			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ov) })
 			g.Go(func() error { return ValidateFeePerGasV07(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
 			g.Go(func() error { return ValidatePendingOpsV07(op, ctx.GetPendingSenderOps()) })
@@ -127,7 +130,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 				return ValidateVerificationGasV07(op, s.ov, s.maxVerificationGas)
 			})
 			g.Go(func() error {
-				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.Version)
+				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.GetPendingPaymasterOps(), ctx.Version)
 			})
 			g.Go(func() error {
 				return ValidatePaymasterData(op, ctx.Version)
@@ -138,6 +141,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 			g.Go(func() error {
 				return ValidatePaymasterPostOpGasLimit(op)
 			})
+			g.Go(func() error { return ValidateEIP7702Auth(op, ctx.ChainID) })
 			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ov) })
 			g.Go(func() error { return ValidateFeePerGasV07(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
 			g.Go(func() error { return ValidatePendingOpsV07(op, ctx.GetPendingSenderOps()) })
@@ -145,6 +149,11 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 		}
 
 		if err := g.Wait(); err != nil {
+			// Checks that already produced a spec error code (e.g. paymaster
+			// deposit too low) keep it; plain errors map to INVALID_FIELDS.
+			if rpcErr, ok := err.(*errors.RPCError); ok {
+				return rpcErr
+			}
 			return errors.NewRPCError(errors.INVALID_FIELDS, err.Error(), err.Error())
 		}
 		return nil
@@ -154,6 +163,10 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 // SimulateOp returns a UserOpHandler that runs through simulation of new UserOps with the EntryPoint.
 func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 	return func(ctx *modules.UserOpHandlerCtx) error {
+		if err := ValidateOpEntityRoles(ctx); err != nil {
+			return err
+		}
+
 		g := new(errgroup.Group)
 
 		switch ctx.Version {
@@ -181,8 +194,31 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 				}
 				return nil
 			})
+			g.Go(func() error {
+				// Deep validation: trace simulateValidation and enforce the
+				// ERC-7562 opcode/storage rules.
+				_, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
+					Rpc:                s.rpc,
+					EntryPoint:         ctx.EntryPoint,
+					Op:                 op,
+					ChainID:            ctx.ChainID,
+					IsRIP7212Supported: s.isRIP7212Supported,
+					Tracer:             s.tracer,
+					AltMempools:        s.alt,
+					Stakes: simulation.EntityStakes{
+						op.Sender:         ctx.GetSenderDepositInfo(),
+						op.GetFactory():   ctx.GetFactoryDepositInfo(),
+						op.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
+					},
+				})
+				if err != nil {
+					return errors.NewRPCError(errors.BANNED_OPCODE, err.Error(), err.Error())
+				}
+				return nil
+			})
 		default:
 			// v0.7+: off-chain simulation only (simulateValidation removed from deployed contract)
+			g.Go(func() error { return ValidateEIP7702AuthNonce(ctx.UserOp, s.eth) })
 			g.Go(func() error {
 				return SimulateValidationV07(
 					s.rpc,
@@ -194,8 +230,8 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 					s.isRIP7212Supported,
 					s.tracer,
 					simulation.EntityStakes{
-						ctx.UserOp.GetSender():   ctx.GetSenderDepositInfo(),
-						ctx.UserOp.GetFactory():  ctx.GetFactoryDepositInfo(),
+						ctx.UserOp.GetSender():    ctx.GetSenderDepositInfo(),
+						ctx.UserOp.GetFactory():   ctx.GetFactoryDepositInfo(),
 						ctx.UserOp.GetPaymaster(): ctx.GetPaymasterDepositInfo(),
 					},
 					ctx.Version,
@@ -203,7 +239,22 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 			})
 		}
 
-		return g.Wait()
+		if err := g.Wait(); err != nil {
+			return err
+		}
+
+		// simulateValidation stops after the validation phase, so
+		// handleOps-only reverts (e.g. AA51 prefund below actualGasCost) need
+		// a stateless dry run of the real call. Runs after the other checks so
+		// their specific error codes (e.g. INVALID_SIGNATURE) take precedence.
+		if ctx.Version == userop.V0_6 {
+			op := ctx.UserOp.(*userop.UserOperation)
+			if err := simulation.CallHandleOps(s.rpc, ctx.EntryPoint, op); err != nil {
+				return errors.NewRPCError(errors.REJECTED_BY_EP_OR_ACCOUNT, err.Error(), err.Error())
+			}
+		}
+
+		return nil
 	}
 }
 
@@ -268,10 +319,141 @@ func (s *Standalone) PaymasterDeposit() modules.BatchHandlerFunc {
 	}
 }
 
-// TODO: Implement
+// SimulateBatch returns a BatchHandler that re-validates each op at bundle
+// time and enforces cross-op bundle rules:
+//
+//  1. Only one op per sender is included per bundle; extras stay in the
+//     mempool for a later bundle.
+//  2. Ops that no longer pass trace validation (state changed since they were
+//     accepted) are dropped from the mempool.
+//  3. STO-041: an op whose validation accessed the sender (or its associated
+//     storage) of another op in the bundle cannot share that bundle; the
+//     later op stays in the mempool.
 func (s *Standalone) SimulateBatch() modules.BatchHandlerFunc {
+	gs := stake.GetStakeWithEthClient(s.eth)
 	return func(ctx *modules.BatchHandlerCtx) error {
+		keep := []*userop.UserOperation{}
+		traces := []*tracer.BundlerCollectorReturn{}
+		seen := map[common.Address]bool{}
+
+		for _, op := range ctx.Batch {
+			if seen[op.Sender] {
+				continue
+			}
+
+			trace, err := s.traceForBatch(ctx, op, gs)
+			if err != nil {
+				ctx.PendingRemoval = append(ctx.PendingRemoval, &modules.PendingRemovalItem{
+					Op:     op,
+					Reason: err.Error(),
+				})
+				continue
+			}
+
+			conflict := false
+			for i, prev := range keep {
+				if simulation.TraceAccessesAddress(traces[i], op.Sender) ||
+					simulation.TraceAccessesAddress(trace, prev.Sender) {
+					conflict = true
+					break
+				}
+			}
+			if conflict {
+				continue
+			}
+
+			seen[op.Sender] = true
+			keep = append(keep, op)
+			traces = append(traces, trace)
+		}
+
+		ctx.Batch = keep
 		return nil
+	}
+}
+
+// traceForBatch runs the version-appropriate trace validation for a batched op
+// and returns the raw collector trace.
+func (s *Standalone) traceForBatch(
+	ctx *modules.BatchHandlerCtx,
+	op *userop.UserOperation,
+	gs stake.GetStakeFunc,
+) (*tracer.BundlerCollectorReturn, error) {
+	stakes := simulation.EntityStakes{}
+	for _, addr := range []common.Address{op.Sender, op.GetFactory(), op.GetPaymaster()} {
+		if addr == common.HexToAddress("0x") {
+			continue
+		}
+		dep, err := gs(ctx.EntryPoint, addr)
+		if err != nil {
+			return nil, err
+		}
+		stakes[addr] = dep
+	}
+
+	switch s.version {
+	case userop.V0_7:
+		out, err := v07sim.TraceSimulateValidation(&v07sim.TraceInput{
+			Rpc:                s.rpc,
+			EntryPoint:         ctx.EntryPoint,
+			Op:                 op,
+			ChainID:            ctx.ChainID,
+			IsRIP7212Supported: s.isRIP7212Supported,
+			Tracer:             s.tracer,
+			Stakes:             stakes,
+			AltMempools:        s.alt,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	case userop.V0_8:
+		out, err := v08sim.TraceSimulateValidation(&v08sim.TraceInput{
+			Rpc:                s.rpc,
+			EntryPoint:         ctx.EntryPoint,
+			Op:                 op,
+			ChainID:            ctx.ChainID,
+			IsRIP7212Supported: s.isRIP7212Supported,
+			Tracer:             s.tracer,
+			Stakes:             stakes,
+			AltMempools:        s.alt,
+			DelegateAddress:    GetEIP7702Address(op.GetEIP7702Auth()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	case userop.V0_9:
+		out, err := v09sim.TraceSimulateValidation(&v09sim.TraceInput{
+			Rpc:                s.rpc,
+			EntryPoint:         ctx.EntryPoint,
+			Op:                 op,
+			ChainID:            ctx.ChainID,
+			IsRIP7212Supported: s.isRIP7212Supported,
+			Tracer:             s.tracer,
+			Stakes:             stakes,
+			AltMempools:        s.alt,
+			DelegateAddress:    GetEIP7702Address(op.GetEIP7702Auth()),
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
+	default:
+		out, err := simulation.TraceSimulateValidation(&simulation.TraceInput{
+			Rpc:                s.rpc,
+			EntryPoint:         ctx.EntryPoint,
+			Op:                 op,
+			ChainID:            ctx.ChainID,
+			IsRIP7212Supported: s.isRIP7212Supported,
+			Tracer:             s.tracer,
+			Stakes:             stakes,
+			AltMempools:        s.alt,
+		})
+		if err != nil {
+			return nil, err
+		}
+		return out.Trace, nil
 	}
 }
 

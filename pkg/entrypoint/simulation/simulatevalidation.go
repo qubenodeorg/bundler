@@ -27,7 +27,7 @@ func SimulateValidation(
 
 	var res []interface{}
 	rawCaller := &entrypoint.EntrypointRaw{Contract: ep}
-	err = rawCaller.Call(nil, &res, "simulateValidation", entrypoint.UserOperation(*op))
+	err = rawCaller.Call(nil, &res, "simulateValidation", entrypoint.UserOperation(op.Core()))
 	if err == nil {
 		return nil, stdError.New("unexpected result from simulateValidation")
 	}

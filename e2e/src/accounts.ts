@@ -8,6 +8,7 @@ import {
 
 import { ENTRY_POINT_V09 } from "./config.js";
 import { loadArtifact } from "./artifacts.js";
+import { waitForReceipt } from "./node.js";
 
 // SimpleAccountFactory bindings. Tests share a single deployed factory per
 // chain (set up by scripts/e2e/run.sh) so multiple ops can create accounts
@@ -48,31 +49,28 @@ export class FactoryClient {
 }
 
 // deployFactory builds and deploys a SimpleAccountFactory pointing at the
-// installed v0.9 EntryPoint. Returns the deployed factory address.
+// installed v0.9 EntryPoint. Returns the deployed factory address. The deploy
+// is confirmed by polling for the receipt directly (see waitForReceipt) since
+// ethers' deployment wait can hang on on-demand chains like geth --dev.
 export async function deployFactory(
   deployer: Wallet,
   entryPoint = ENTRY_POINT_V09,
 ): Promise<string> {
   const art = loadArtifact("SimpleAccountFactory");
   const factory = new ContractFactory(art.abi, art.bytecode, deployer);
-  const c = await factory.deploy(entryPoint);
-  await c.waitForDeployment();
-  return await c.getAddress();
+  const deployTx = await factory.getDeployTransaction(entryPoint);
+  const tx = await deployer.sendTransaction(deployTx);
+  const receipt = await waitForReceipt(
+    deployer.provider as JsonRpcProvider,
+    tx.hash,
+  );
+  if (receipt.status !== 1 || !receipt.contractAddress) {
+    throw new Error(`SimpleAccountFactory deploy reverted: ${tx.hash}`);
+  }
+  return receipt.contractAddress;
 }
 
 export function encodeExecute(target: string, value: bigint, data: string): string {
   const iface = new Interface(SIMPLE_ACCOUNT_ABI);
   return iface.encodeFunctionData("execute", [target, value, data]);
-}
-
-// fundAccount sends ETH to an arbitrary address using the supplied wallet. The
-// SimpleAccount needs a prefund to pay the EntryPoint when no paymaster is
-// attached.
-export async function fundAccount(
-  funder: Wallet,
-  target: string,
-  amountWei: bigint,
-): Promise<void> {
-  const tx = await funder.sendTransaction({ to: target, value: amountWei });
-  await tx.wait();
 }

@@ -41,7 +41,7 @@ func SimulateHandleOp(in *SimulateInput) (*reverts.ExecutionResultRevert, error)
 	}
 	auth.GasLimit = math.MaxUint64
 	auth.NoSend = true
-	tx, err := ep.SimulateHandleOp(auth, entrypoint.UserOperation(*in.Op), in.Target, in.Data)
+	tx, err := ep.SimulateHandleOp(auth, entrypoint.UserOperation(in.Op.Core()), in.Target, in.Data)
 	if err != nil {
 		return nil, err
 	}

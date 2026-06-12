@@ -48,8 +48,8 @@ func TestToPackedBatchPackedFields(t *testing.T) {
 		t.Fatalf("accountGasLimits: extracted CGL %d, want %d", extractedCG, op.CallGasLimit)
 	}
 
-	extractedMF := new(big.Int).Rsh(new(big.Int).SetBytes(state.GasFees[:]), 128)
-	extractedMP := new(big.Int).And(new(big.Int).SetBytes(state.GasFees[:]), maxUint128)
+	extractedMP := new(big.Int).Rsh(new(big.Int).SetBytes(state.GasFees[:]), 128)
+	extractedMF := new(big.Int).And(new(big.Int).SetBytes(state.GasFees[:]), maxUint128)
 	if extractedMF.Cmp(op.MaxFeePerGas) != 0 {
 		t.Fatalf("gasFees: extracted MF %d, want %d", extractedMF, op.MaxFeePerGas)
 	}
@@ -82,8 +82,8 @@ func TestPackGasFees(t *testing.T) {
 	result := packGasFees(mf, mp)
 
 	maxUint128 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
-	extractedMF := new(big.Int).Rsh(new(big.Int).SetBytes(result[:]), 128)
-	extractedMP := new(big.Int).And(new(big.Int).SetBytes(result[:]), maxUint128)
+	extractedMP := new(big.Int).Rsh(new(big.Int).SetBytes(result[:]), 128)
+	extractedMF := new(big.Int).And(new(big.Int).SetBytes(result[:]), maxUint128)
 	if extractedMF.Cmp(mf) != 0 {
 		t.Fatalf("packGasFees: extracted MF %d, want %d", extractedMF, mf)
 	}

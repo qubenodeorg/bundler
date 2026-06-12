@@ -226,6 +226,12 @@ func GetValues() *Values {
 			panic(fmt.Sprintf("Fatal config error: unsupported entrypoint version %q", entryPointVersionStr))
 		}
 		entryPointVersion = userop.Version(entryPointVersionStr)
+		// Pin the explicit version for every configured EntryPoint so
+		// address-based detection honors the override for non-canonical
+		// deployments too.
+		for _, ep := range supportedEntryPoints {
+			userop.RegisterEntryPointVersion(ep, entryPointVersion)
+		}
 	}
 
 	return &Values{

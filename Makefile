@@ -46,11 +46,5 @@ docs:
 e2e-fetch-artifacts:
 	cd e2e && npm install --silent && npm run --silent fetch-artifacts
 
-e2e-ethereum:
-	scripts/e2e/run.sh ethereum
-
-e2e-arbitrum:
-	scripts/e2e/run.sh arbitrum
-
 e2e:
-	scripts/e2e/run.sh all
+	scripts/e2e/run.sh

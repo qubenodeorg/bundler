@@ -217,9 +217,11 @@ func TestProcessTraceResult_UnstakedPaymasterWithContext(t *testing.T) {
 		},
 	}
 
+	// EREP-050 is not enforced for v0.7: the spec dropped it (the
+	// releases/v0.7 suite expects acceptance) before v0.8 reinstated it.
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (unstaked paymaster with context)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (EREP-050 not enforced in v0.7)", err)
 	}
 }
 
@@ -293,8 +295,10 @@ func TestProcessTraceResult_InvalidPaymasterOutput(t *testing.T) {
 		},
 	}
 
+	// With EREP-050 dropped for v0.7 the paymaster return data is no longer
+	// decoded, so a malformed output does not fail validation.
 	_, err := ProcessTraceResult(op, op.Sender, stakes, res, common.Address{})
-	if err == nil {
-		t.Fatal("ProcessTraceResult: got nil, want err (invalid paymaster output)")
+	if err != nil {
+		t.Fatalf("ProcessTraceResult: got err %v, want nil (paymaster output not decoded in v0.7)", err)
 	}
 }

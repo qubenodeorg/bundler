@@ -15,6 +15,7 @@ import (
 
 	"github.com/zarbanio/bundler/pkg/entrypoint/reverts"
 	"github.com/zarbanio/bundler/pkg/entrypoint/v07"
+	v07reverts "github.com/zarbanio/bundler/pkg/entrypoint/v07/reverts"
 	"github.com/zarbanio/bundler/pkg/signer"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
@@ -67,10 +68,12 @@ func packAccountGasLimits(verificationGasLimit, callGasLimit *big.Int) [32]byte 
 }
 
 func packGasFees(maxFeePerGas, maxPriorityFeePerGas *big.Int) [32]byte {
+	// maxPriorityFeePerGas occupies the high 128 bits per
+	// UserOperationLib.unpackGasFees.
 	mf := new(big.Int).And(maxFeePerGas, maxUint128)
 	mp := new(big.Int).And(maxPriorityFeePerGas, maxUint128)
-	packed := new(big.Int).Lsh(mf, 128)
-	packed.Or(packed, mp)
+	packed := new(big.Int).Lsh(mp, 128)
+	packed.Or(packed, mf)
 	b := make([]byte, 32)
 	packed.FillBytes(b)
 	var arr [32]byte
@@ -107,11 +110,19 @@ func EstimateHandleOpsGas(opts *Opts) (gas uint64, revert *reverts.FailedOpRever
 		AccessList: tx.AccessList(),
 	})
 	if err != nil {
-		revert, err := reverts.NewFailedOp(err)
-		if err != nil {
-			return 0, nil, err
+		if revert, foErr := reverts.NewFailedOp(err); foErr == nil {
+			return 0, revert, nil
 		}
-		return 0, revert, nil
+		// v0.7+ wraps an entity revert during validation as FailedOpWithRevert;
+		// surface it as a FailedOpRevert so the relayer can drop the right op.
+		if fo, foErr := v07reverts.NewFailedOpWithRevert(err); foErr == nil {
+			reason := fo.Reason
+			if inner := reverts.InnerRevertReason(fo.Inner); inner != "" {
+				reason = reason + ": " + inner
+			}
+			return 0, &reverts.FailedOpRevert{OpIndex: fo.OpIndex, Reason: reason}, nil
+		}
+		return 0, nil, err
 	}
 
 	return est, nil, nil

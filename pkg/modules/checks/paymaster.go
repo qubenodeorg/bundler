@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/pkg/entrypoint"
+	rpcerrors "github.com/zarbanio/bundler/pkg/errors"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -53,12 +54,14 @@ func ValidatePaymasterAndData(
 	return nil
 }
 
-// ValidatePaymaster checks that the paymaster is deployed and has sufficient deposit.
+// ValidatePaymaster checks that the paymaster is deployed and has a deposit
+// covering the max prefund of this op plus all its pending ops in the mempool.
 func ValidatePaymaster(
 	op userop.UserOperationInterface,
 	dep *entrypoint.IStakeManagerDepositInfo,
 	gc GetCodeFunc,
-	_ userop.Version,
+	pendingOps []*userop.UserOperation,
+	version userop.Version,
 ) error {
 	// Zero-address paymaster validation is handled in ValidatePaymasterData.
 	if op.GetPaymaster() == (common.Address{}) {
@@ -74,11 +77,39 @@ func ValidatePaymaster(
 		return ErrPaymasterNotDeployed
 	}
 
-	if dep.Deposit.Cmp(op.GetMaxPrefund()) < 0 {
-		return ErrPaymasterInsufficientDep
+	required := new(big.Int).Set(op.GetMaxPrefund())
+	for _, pending := range pendingOps {
+		if version == userop.V0_6 {
+			required.Add(required, pending.GetMaxPrefund())
+		} else {
+			required.Add(required, packedMaxPrefund(pending))
+		}
+	}
+	if dep.Deposit.Cmp(required) < 0 {
+		return rpcerrors.NewRPCError(
+			rpcerrors.PAYMASTER_DEPOSIT_TOO_LOW,
+			"paymaster deposit too low to cover max prefund of all pending ops",
+			nil,
+		)
 	}
 
 	return nil
+}
+
+var maxUint128 = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 128), big.NewInt(1))
+
+// packedMaxPrefund mirrors the v0.7+ max-cost formula (gas limits incl. the
+// paymaster limits, times maxFeePerGas) for a mempool op stored in the packed
+// legacy format.
+func packedMaxPrefund(op *userop.UserOperation) *big.Int {
+	sum := new(big.Int).Add(op.VerificationGasLimit, op.CallGasLimit)
+	sum.Add(sum, op.PreVerificationGas)
+	if len(op.PaymasterAndData) >= common.AddressLength+32 {
+		packed := new(big.Int).SetBytes(op.PaymasterAndData[common.AddressLength : common.AddressLength+32])
+		sum.Add(sum, new(big.Int).Rsh(packed, 128))
+		sum.Add(sum, new(big.Int).And(packed, maxUint128))
+	}
+	return sum.Mul(sum, op.MaxFeePerGas)
 }
 
 // ValidatePaymasterData validates the paymaster data format. A zero-address
@@ -126,16 +157,3 @@ func ValidatePaymasterPostOpGasLimit(op userop.UserOperationInterface) error {
 	return nil
 }
 
-// ValidatePaymasterSignature checks that paymasterSignature is present when a paymaster is set (v0.9+).
-func ValidatePaymasterSignature(op userop.UserOperationInterface, version userop.Version) error {
-	if version < userop.V0_9 {
-		return nil
-	}
-	if op.GetPaymaster() == (common.Address{}) {
-		return nil
-	}
-	if len(op.GetPaymasterSignature()) == 0 {
-		return errors.New("paymasterSignature: required when paymaster is set")
-	}
-	return nil
-}

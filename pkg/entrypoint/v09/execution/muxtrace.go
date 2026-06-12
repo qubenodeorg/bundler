@@ -67,7 +67,9 @@ func TraceCombined(in *CombinedTraceInput) (*CombinedTraceOutput, error) {
 		return nil, err
 	}
 
-	beneficiary := common.HexToAddress("0x")
+	// handleOps reverts AA90 for a zero beneficiary even when the op is valid,
+	// so trace with a dummy non-zero beneficiary.
+	beneficiary := common.BigToAddress(common.Big1)
 	tx, err := ep.HandleOps(auth, []epv09.PackedUserOperation{*packedOp}, beneficiary)
 	if err != nil {
 		return nil, err
@@ -102,7 +104,9 @@ func TraceCombined(in *CombinedTraceInput) (*CombinedTraceOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	validation, err := v09sim.ProcessTraceResult(in.Op, in.EntryPoint, in.Stakes, collected, in.DelegateAddress)
+	validation, err := v09sim.ProcessTraceResultWithRules(
+		in.Op, in.EntryPoint, in.Stakes, collected, in.DelegateAddress, in.IsRIP7212Supported, in.AltMempools,
+	)
 	if err != nil {
 		return nil, err
 	}

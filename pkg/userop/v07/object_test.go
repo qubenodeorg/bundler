@@ -81,8 +81,10 @@ func TestV07GetMaxGasAvailable(t *testing.T) {
 func TestV07GetMaxGasAvailableWithPaymaster(t *testing.T) {
 	op := mockV07OpWithPaymaster()
 	mag := op.GetMaxGasAvailable()
-	// v0.7: still no 3x multiplier even with paymaster
+	// v0.7: no 3x multiplier; the explicit paymaster gas limits are added.
 	want := new(big.Int).Add(op.VerificationGasLimit, new(big.Int).Add(op.CallGasLimit, op.PreVerificationGas))
+	want.Add(want, op.PaymasterVerificationGasLimit)
+	want.Add(want, op.PaymasterPostOpGasLimit)
 	if mag.Cmp(want) != 0 {
 		t.Fatalf("got %s, want %s", mag.String(), want.String())
 	}
