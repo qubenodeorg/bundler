@@ -34,6 +34,18 @@ func livenessHandler() gin.HandlerFunc {
 // (potentially public) response, to avoid leaking internal infrastructure detail.
 func readinessHandler(eth *ethclient.Client, db *badger.DB, logr logr.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Guard against an unwired probe: a nil dependency means the instance was
+		// never fully initialized, so report not-ready rather than panic on the
+		// dereference below.
+		if eth == nil || db == nil {
+			logr.Error(nil, "readiness check failed: dependencies not initialized")
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"ready":  false,
+				"checks": gin.H{"eth_client": "unavailable", "db": "unavailable"},
+			})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(c.Request.Context(), healthCheckTimeout)
 		defer cancel()
 
