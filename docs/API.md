@@ -500,20 +500,66 @@ is the case for v0.6–v0.8). The caller copies it into the UserOperation's
 }
 ```
 
-## Health Check
+## Health Checks
 
-### `GET /ping`
+The bundler exposes separate liveness and readiness probes for orchestrators.
 
-Simple health check endpoint.
+### `GET /live`
+
+Liveness probe. Returns `200` as long as the process is up; it has no upstream
+dependencies, so a failure means the process itself is broken and should be
+restarted. `GET /ping` is a backwards-compatible alias.
 
 **Request:**
-```
-GET http://localhost:4337/ping
+
+```http
+GET http://localhost:4337/live
 ```
 
 **Response:**
-```
+
+```http
 HTTP/1.1 200 OK
+
+{ "status": "ok" }
+```
+
+### `GET /ready`
+
+Readiness probe. Checks the dependencies required to serve traffic — the
+upstream eth JSON-RPC endpoint and the mempool database. Returns `200` when all
+checks pass and `503 Service Unavailable` when any dependency is degraded, so a
+load balancer can stop routing to the instance without it being restarted. The
+probes are bounded by a short internal timeout. Check values are stable,
+sanitized strings (`ok` / `unavailable`); the underlying error is written to the
+server log, not the response.
+
+**Request:**
+
+```http
+GET http://localhost:4337/ready
+```
+
+**Response (healthy):**
+
+```http
+HTTP/1.1 200 OK
+
+{
+  "ready": true,
+  "checks": { "eth_client": "ok", "db": "ok" }
+}
+```
+
+**Response (eth RPC unreachable):**
+
+```http
+HTTP/1.1 503 Service Unavailable
+
+{
+  "ready": false,
+  "checks": { "eth_client": "unavailable", "db": "ok" }
+}
 ```
 
 ## Error Response Format

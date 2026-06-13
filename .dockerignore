@@ -1,0 +1,28 @@
+# VCS / CI
+.git
+.github
+.gitignore
+
+# Local env & secrets — never bake these into the image
+.env
+*.env
+
+# Build output & local data
+qubenode-bundler
+/data
+/tmp
+
+# Docs & meta (not needed at runtime)
+docs
+*.md
+LICENSE
+
+# Editor / OS noise
+.vscode
+.idea
+.DS_Store
+
+# Tooling
+Makefile
+scripts
+e2e

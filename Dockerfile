@@ -1,31 +1,63 @@
-FROM golang:1.20-buster as builder
+# syntax=docker/dockerfile:1
 
-# Create and change to the app directory.
+# ---- Build stage ----
+# bookworm (Debian 12) is current LTS; buster (Debian 10) is EOL and no longer
+# receives security updates.
+FROM golang:1.20-bookworm AS builder
+
 WORKDIR /app
 
-# Retrieve application dependencies.
-# This allows the container build to reuse cached dependencies.
-# Expecting to copy go.mod and if present go.sum.
+# Download dependencies first so this layer is cached unless go.mod/go.sum change.
 COPY go.* ./
 RUN go mod download
 
-# Copy local code to the container image.
+# Copy the rest of the source and build.
 COPY . ./
 
-# Build the binary.
-RUN go build -v -o qubenode-bundler
+# -trimpath strips local paths; -s -w drop the symbol/DWARF tables for a smaller
+# binary. VERSION can be overridden at build time: --build-arg VERSION=v1.2.3
+ARG VERSION=dev
+RUN CGO_ENABLED=1 go build \
+    -trimpath \
+    -ldflags="-s -w -X main.version=${VERSION}" \
+    -o /app/qubenode-bundler
 
-# Use the official Debian slim image for a lean production container.
-# https://hub.docker.com/_/debian
-# https://docs.docker.com/develop/develop-images/multistage-build/#use-multi-stage-builds
-FROM debian:buster-slim
-RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    ca-certificates && \
+# ---- Runtime stage ----
+FROM debian:bookworm-slim
+
+# ca-certificates for outbound TLS (RPC providers); wget is used by HEALTHCHECK.
+# DL3008 (pin apt versions) is intentionally ignored: hard-pinning base-image
+# package versions breaks the build once Debian supersedes them with security
+# updates, which we want to pick up automatically.
+# hadolint ignore=DL3008
+RUN set -eux; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        wget; \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the binary to the production image from the builder stage.
-COPY --from=builder /app/qubenode-bundler /app/qubenode-bundler
+# Run as an unprivileged user. The data directory is owned by that user so
+# BadgerDB can persist the mempool across restarts.
+RUN groupadd --system --gid 10001 bundler \
+    && useradd --system --uid 10001 --gid bundler --home-dir /app --no-create-home bundler \
+    && mkdir -p /app /data \
+    && chown -R bundler:bundler /app /data
+
+COPY --from=builder --chown=bundler:bundler /app/qubenode-bundler /app/qubenode-bundler
+
+USER bundler
+WORKDIR /app
+
+# Persist BadgerDB to a mountable volume rather than ephemeral /tmp.
+ENV ERC4337_BUNDLER_DATA_DIRECTORY=/data
+VOLUME ["/data"]
 
 EXPOSE 4337
 
-CMD ["/app/qubenode-bundler", "start", "--mode", "private"]
+# /live returns 200 once the HTTP server is up (no upstream dependencies).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget --quiet --tries=1 --spider http://127.0.0.1:4337/live || exit 1
+
+ENTRYPOINT ["/app/qubenode-bundler"]
+CMD ["start", "--mode", "private"]

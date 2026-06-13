@@ -2,9 +2,7 @@ package start
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net/http"
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
@@ -191,6 +189,9 @@ func SearcherMode() {
 	if err := b.Run(); err != nil {
 		log.Fatal(err)
 	}
+	// Stop the batch loop on shutdown before the DB is closed (deferred db.Close
+	// runs after this, since defers unwind LIFO), letting any in-flight batch finish.
+	defer b.Stop()
 
 	// init Debug. debug_bundler_sendBundleNow must build one bundle from ALL
 	// eligible mempool ops, so the batch size is not overridden.
@@ -213,9 +214,9 @@ func SearcherMode() {
 		logger.WithLogr(logr),
 		gin.Recovery(),
 	)
-	r.GET("/ping", func(g *gin.Context) {
-		g.Status(http.StatusOK)
-	})
+	r.GET("/ping", livenessHandler())
+	r.GET("/live", livenessHandler())
+	r.GET("/ready", readinessHandler(eth, db, logr))
 	handlers := []gin.HandlerFunc{
 		jsonrpc.Controller(client.NewRpcAdapter(c, d, rpc)),
 		jsonrpc.WithOTELTracerAttributes(),
@@ -223,7 +224,7 @@ func SearcherMode() {
 	r.POST("/", handlers...)
 	r.POST("/rpc", handlers...)
 
-	if err := r.Run(fmt.Sprintf(":%d", conf.Port)); err != nil {
+	if err := serveHTTP(r, conf.Port, conf.DebugMode, logr); err != nil {
 		log.Fatal(err)
 	}
 }
