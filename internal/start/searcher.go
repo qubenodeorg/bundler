@@ -224,5 +224,7 @@ func SearcherMode() {
 	r.POST("/", handlers...)
 	r.POST("/rpc", handlers...)
 
-	serveHTTP(r, conf.Port, conf.DebugMode, logr)
+	if err := serveHTTP(r, conf.Port, conf.DebugMode, logr); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -22,8 +22,13 @@ import (
 //
 // ReadHeaderTimeout is the primary slowloris guard. WriteTimeout is generous so
 // it does not cut legitimate but slow calls (e.g. the debug send-bundle-now RPC
-// that waits for inclusion); it is only enabled in debug mode.
-func serveHTTP(r *gin.Engine, port int, debugMode bool, logr logr.Logger) {
+// that waits for inclusion); it is disabled in debug mode to avoid interrupting
+// calls that can block indefinitely waiting for on-chain inclusion.
+//
+// It returns a non-nil error when the server fails to start or serve (e.g. the
+// port is already in use) so the caller can exit non-zero; a clean shutdown via
+// signal returns nil.
+func serveHTTP(r *gin.Engine, port int, debugMode bool, logr logr.Logger) error {
 	writeTimeout := 60 * time.Second
 	if debugMode {
 		// debug_bundler_sendBundleNow blocks until the bundle is mined, which can
@@ -54,7 +59,7 @@ func serveHTTP(r *gin.Engine, port int, debugMode bool, logr logr.Logger) {
 
 	select {
 	case err := <-serverErr:
-		logr.Error(err, "http server failed")
+		return fmt.Errorf("http server failed: %w", err)
 	case sig := <-stop:
 		logr.Info("shutdown signal received, draining requests", "signal", sig.String())
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -63,5 +68,6 @@ func serveHTTP(r *gin.Engine, port int, debugMode bool, logr logr.Logger) {
 			logr.Error(err, "graceful shutdown failed, forcing close")
 			_ = srv.Close()
 		}
+		return nil
 	}
 }
