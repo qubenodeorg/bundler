@@ -97,7 +97,9 @@ func SearcherMode() {
 		defer metricsCleanup()
 	}
 
-	ov := gas.NewDefaultOverheadForVersion(conf.EntryPointVersion)
+	// Build one gas Overhead per configured EntryPoint version so a single
+	// instance can serve all of them with version-correct PVG math.
+	ovr := gas.NewOverheadResolver(conf.EntryPointVersions...)
 
 	mem, err := mempool.New(db)
 	if err != nil {
@@ -112,7 +114,7 @@ func SearcherMode() {
 	check := checks.New(
 		db,
 		rpc,
-		ov,
+		ovr,
 		alt,
 		conf.MaxVerificationGas,
 		conf.MaxBatchGasLimit,
@@ -131,7 +133,7 @@ func SearcherMode() {
 	// Init Client
 	c := client.New(
 		mem,
-		ov,
+		ovr,
 		chain,
 		conf.SupportedEntryPoints,
 		conf.OpLookupLimit,
@@ -145,7 +147,7 @@ func SearcherMode() {
 	c.SetGetGasEstimateFunc(
 		client.GetGasEstimateWithEthClient(
 			rpc,
-			ov,
+			ovr,
 			chain,
 			conf.MaxBatchGasLimit,
 			conf.NativeBundlerExecutorTracer,

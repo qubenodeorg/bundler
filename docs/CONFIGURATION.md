@@ -25,18 +25,21 @@ These variables **must** be set for the bundler to start:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS` | `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` | Comma-separated list of EntryPoint addresses |
+| `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS` | All four canonical EntryPoints (v0.9, v0.8, v0.7, v0.6) | Comma-separated list of EntryPoint addresses |
 | `ERC4337_BUNDLER_ENTRYPOINT_VERSION` | `auto` | ERC-4337 version: `auto`, `v0.6`, `v0.7`, `v0.8`, `v0.9` |
 | `ERC4337_BUNDLER_BENEFICIARY` | Derived from private key | Address to receive gas fees |
 
 #### EntryPoint Version Detection
 
-The bundler supports ERC-4337 v0.6, v0.7, v0.8, and v0.9 from a single binary.
-The active version controls UserOperation parsing, the userOpHash scheme, gas
-overhead, and which validation rules apply.
+The bundler serves ERC-4337 v0.6, v0.7, v0.8, and v0.9 **concurrently from a
+single instance** — no separate process per version. Each configured EntryPoint
+is served at its own version simultaneously; the per-op version (derived from
+the target EntryPoint) controls UserOperation parsing, the userOpHash scheme,
+gas overhead, and which validation rules apply. By default all four canonical
+EntryPoints are configured, so one binary handles every version at once.
 
-With `ERC4337_BUNDLER_ENTRYPOINT_VERSION=auto` (the default), the version is
-inferred from the **first** address in `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS`:
+With `ERC4337_BUNDLER_ENTRYPOINT_VERSION=auto` (the default), each configured
+EntryPoint's version is detected **independently** from its address:
 
 | EntryPoint address | Detected version |
 |--------------------|------------------|
@@ -46,11 +49,11 @@ inferred from the **first** address in `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS`:
 | `0x433709009B8330FDa32311DF1C2AFA402eD8D009` | `v0.9` |
 
 Setting `ERC4337_BUNDLER_ENTRYPOINT_VERSION` to an explicit version **overrides**
-auto-detection and pins that version for every configured EntryPoint address.
-Use this when running a non-canonical / locally deployed EntryPoint (e.g. in
-tests) whose address is not in the table above — without the override, an
-unknown address falls back to `v0.6`. An unsupported version string is a fatal
-configuration error.
+auto-detection and pins that single version for every configured EntryPoint
+address (collapsing the instance to one version). Use this when running a
+non-canonical / locally deployed EntryPoint (e.g. in tests) whose address is not
+in the table above — without the override, an unknown address falls back to
+`v0.6`. An unsupported version string is a fatal configuration error.
 
 If no EntryPoint is configured and the version is `auto`, the bundler defaults
 to `v0.9`.

@@ -31,13 +31,13 @@ func newStandalone(t *testing.T) (*Standalone, *badger.DB, *httptest.Server) {
 	}
 	t.Cleanup(r.Close)
 
-	ov := gas.NewDefaultOverhead()
+	ovr := gas.NewOverheadResolver(userop.V0_6, userop.V0_7, userop.V0_8, userop.V0_9)
 	alt, err := altmempools.New(big.NewInt(1), nil)
 	if err != nil {
 		t.Fatalf("altmempools: %v", err)
 	}
 	rep := &entities.ReputationConstants{}
-	s := New(db, r, ov, alt, big.NewInt(1_000_000), big.NewInt(10_000_000), false, "callTracer", rep)
+	s := New(db, r, ovr, alt, big.NewInt(1_000_000), big.NewInt(10_000_000), false, "callTracer", rep)
 	return s, db, srv
 }
 
@@ -46,8 +46,13 @@ func TestStandalone_NewSetsFields(t *testing.T) {
 	if s == nil {
 		t.Fatal("nil standalone")
 	}
-	if s.version != userop.V0_6 {
-		t.Fatalf("expected v0.6 version, got %s", s.version)
+	// The resolver must serve every configured version; the v0.6 Overhead is
+	// always present as the fallback.
+	if s.ovr.For(userop.V0_6).GetVersion() != userop.V0_6 {
+		t.Fatalf("expected v0.6 overhead from resolver")
+	}
+	if s.ovr.For(userop.V0_9).GetVersion() != userop.V0_9 {
+		t.Fatalf("expected v0.9 overhead from resolver")
 	}
 	if s.tracer != "callTracer" {
 		t.Fatalf("tracer not set")

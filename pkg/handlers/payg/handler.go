@@ -29,13 +29,15 @@ func New(
 	rpc *rpc.Client,
 	eth *ethclient.Client,
 	chain *big.Int,
-	ov *gas.Overhead,
+	ovr *gas.OverheadResolver,
 ) *Handler {
 	return &Handler{
-		rpc:          rpc,
-		eth:          eth,
-		signer:       signer,
-		gasEstimator: estimator.New(signer, rpc, eth, chain, ov),
+		rpc:    rpc,
+		eth:    eth,
+		signer: signer,
+		// payg normalizes every op to the canonical v0.6 packed form (see
+		// convertOp) before estimating, so the v0.6 Overhead is the correct one.
+		gasEstimator: estimator.New(signer, rpc, eth, chain, ovr.For(userop.V0_6)),
 	}
 }
 

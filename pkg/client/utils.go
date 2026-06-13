@@ -206,7 +206,7 @@ func getGasEstimateNoop() GetGasEstimateFunc {
 // fetch an estimate for verificationGasLimit and callGasLimit.
 func GetGasEstimateWithEthClient(
 	rpc *rpc.Client,
-	ov *gas.Overhead,
+	ovr *gas.OverheadResolver,
 	chain *big.Int,
 	maxGasLimit *big.Int,
 	tracer string,
@@ -222,7 +222,7 @@ func GetGasEstimateWithEthClient(
 			EntryPoint:  ep,
 			Op:          op,
 			Sos:         sos,
-			Ov:          ov,
+			Ov:          ovr.For(version),
 			ChainID:     chain,
 			MaxGasLimit: maxGasLimit,
 			Tracer:      tracer,
