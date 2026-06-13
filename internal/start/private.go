@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
@@ -223,9 +222,9 @@ func PrivateMode() {
 		logger.WithLogr(logr),
 		gin.Recovery(),
 	)
-	r.GET("/ping", func(g *gin.Context) {
-		g.Status(http.StatusOK)
-	})
+	r.GET("/ping", livenessHandler())
+	r.GET("/live", livenessHandler())
+	r.GET("/ready", readinessHandler(eth, db))
 	handlers := []gin.HandlerFunc{
 		jsonrpc.Controller(client.NewRpcAdapter(c, d, rpc)),
 		jsonrpc.WithOTELTracerAttributes(),
