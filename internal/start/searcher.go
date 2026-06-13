@@ -2,7 +2,6 @@ package start
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 
@@ -191,6 +190,9 @@ func SearcherMode() {
 	if err := b.Run(); err != nil {
 		log.Fatal(err)
 	}
+	// Stop the batch loop on shutdown before the DB is closed (deferred db.Close
+	// runs after this, since defers unwind LIFO), letting any in-flight batch finish.
+	defer b.Stop()
 
 	// init Debug. debug_bundler_sendBundleNow must build one bundle from ALL
 	// eligible mempool ops, so the batch size is not overridden.
@@ -223,7 +225,5 @@ func SearcherMode() {
 	r.POST("/", handlers...)
 	r.POST("/rpc", handlers...)
 
-	if err := r.Run(fmt.Sprintf(":%d", conf.Port)); err != nil {
-		log.Fatal(err)
-	}
+	serveHTTP(r, conf.Port, conf.DebugMode, logr)
 }
