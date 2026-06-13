@@ -123,9 +123,68 @@ jobs:
           go mod download
           go build -o ./tmp/qubenode-bundler main.go
 
+      # v0.7 is deployed explicitly below. Its releases/v0.7 toolchain pins an
+      # ethers v5 whose EIP-1559 gas negotiation against geth v1.16.9 dev mode
+      # leaves the EntryPoint deploy tx unmined; hardhat-deploy then drops to an
+      # interactive "pending transaction" prompt that blocks forever in CI.
       - name: Deploy ${{ matrix.version }} EntryPoint
+        if: matrix.version != 'v0.7'
         working-directory: bundler-spec-tests/@account-abstraction
         run: yarn deploy --network localhost
+
+      # releases/v0.7's yarn deploy hangs on a non-interactive runner (see above).
+      # Deploy the canonical v0.7 EntryPoint directly through the deterministic-
+      # deployment proxy instead, the same way the v0.8 job overlays its released
+      # artifact. The proxy is not present yet (no prior yarn deploy installed it),
+      # so install it first via its canonical keyless transaction.
+      - name: Deploy v0.7 EntryPoint at canonical address
+        if: matrix.version == 'v0.7'
+        run: |
+          # Install the Arachnid deterministic-deployment proxy: fund its keyless
+          # deployer, then broadcast the canonical pre-signed deployment tx.
+          docker exec geth geth \
+            --exec "eth.sendTransaction({from: eth.accounts[0], to: \"0x3fab184622dc19b6109349b94811493bf2a45362\", value: web3.toWei(1, \"ether\")})" \
+            attach http://localhost:8545
+          # Wait for the funding to be mined; the pre-signed tx is rejected for
+          # insufficient funds if it arrives while the deployer balance is 0.
+          for i in $(seq 1 30); do
+            BAL=$(curl -s -X POST -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0x3fab184622dc19b6109349b94811493bf2a45362","latest"]}' \
+              http://localhost:8545 | jq -r .result)
+            [ "$BAL" != "0x0" ] && [ -n "$BAL" ] && [ "$BAL" != "null" ] && break
+            sleep 1
+          done
+          curl -s -X POST -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"eth_sendRawTransaction","params":["0xf8a58085174876e800830186a08080b853604580600e600039806000f350fe7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe03601600081602082378035828234f58015156039578182fd5b8082525050506014600cf31ba02222222222222222222222222222222222222222222222222222222222222222a02222222222222222222222222222222222222222222222222222222222222222"]}' \
+            http://localhost:8545
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -X POST -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_getCode","params":["0x4e59b44847b379578588920cA78FbF26c0B4956C","latest"]}' \
+              http://localhost:8545 | jq -r .result)
+            [ "$CODE" != "0x" ] && [ -n "$CODE" ] && [ "$CODE" != "null" ] && break
+            sleep 1
+          done
+          # CREATE2 the released v0.7.0 EntryPoint through the proxy. The vanity
+          # salt + released bytecode reproduce the canonical address.
+          npm pack @account-abstraction/contracts@0.7.0
+          tar -xzf account-abstraction-contracts-0.7.0.tgz package/artifacts/EntryPoint.json
+          BYTECODE=$(node -p "require('./package/artifacts/EntryPoint.json').bytecode.slice(2)")
+          SALT=90d8084deab30c2a37c45e8d47f49f2f7965183cb6990a98943ef94940681de3
+          docker exec geth geth \
+            --exec "eth.sendTransaction({from: eth.accounts[0], to: \"0x4e59b44847b379578588920cA78FbF26c0B4956C\", data: \"0x${SALT}${BYTECODE}\", gas: 10000000})" \
+            attach http://localhost:8545
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -X POST -H 'content-type: application/json' \
+              -d '{"jsonrpc":"2.0","id":1,"method":"eth_getCode","params":["0x0000000071727De22E5E9d8BAf0edAc6f37da032","latest"]}' \
+              http://localhost:8545 | jq -r .result)
+            if [ "$CODE" != "0x" ] && [ -n "$CODE" ] && [ "$CODE" != "null" ]; then
+              echo "v0.7 EntryPoint deployed at canonical address"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "v0.7 EntryPoint deploy failed" >&2
+          exit 1
 
       # The master spec checkout compiles EntryPoint from source, which does
       # not reproduce the released v0.8 bytecode, so its create2 deploy lands
