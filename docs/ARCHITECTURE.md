@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the high-level architecture of the qubenode-bundler, a Go implementation of an [ERC-4337 v0.6](https://eips.ethereum.org/EIPS/eip-4337) Bundler.
+This document describes the high-level architecture of the qubenode-bundler, a Go implementation of an [ERC-4337](https://eips.ethereum.org/EIPS/eip-4337) Bundler supporting EntryPoint versions **v0.6, v0.7, v0.8, and v0.9** from a single binary.
 
 ## Overview
 
@@ -265,6 +265,81 @@ For L2 networks, the bundler adjusts PreVerificationGas calculations using netwo
 Default supported EntryPoint: `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789`
 
 This is configurable via the `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS` environment variable.
+
+## Version-Aware Architecture
+
+The bundler supports four ERC-4337 versions concurrently. The version is resolved
+at startup from the EntryPoint address (or the `ERC4337_BUNDLER_ENTRYPOINT_VERSION`
+override) and stored on `config.Values.EntryPointVersion`. See
+[Configuration](./CONFIGURATION.md#entrypoint-version-detection).
+
+### Versioned UserOperation model
+
+Each version has its own `UserOperation` struct under `pkg/userop/`:
+
+| Package | Version | Notable fields |
+|---------|---------|----------------|
+| `pkg/userop` (root) | v0.6 | `initCode`, `paymasterAndData` |
+| `pkg/userop/v07` | v0.7 | `factory`/`factoryData`, split paymaster gas limits |
+| `pkg/userop/v08` | v0.8 | v0.7 + `eip7702Auth`, ERC-712 `userOpHash` |
+| `pkg/userop/v09` | v0.9 | v0.8 + `paymasterSignature` (excluded from hash) |
+
+All four structs implement `userop.UserOperationInterface`, so the validation,
+gas, and mempool code can operate on any version through a common set of getters
+(`GetFactory()`, `GetPaymasterData()`, `GetUserOpHash()`, `Pack()`, …).
+
+- `userop.NewUserOperation(version, data)` constructs the right struct.
+- `userop.DetectVersionFromEntryPoint(addr)` and `DetectVersion(data)` resolve the
+  version from the EntryPoint address or the request body shape.
+- The client routes requests with `parseVersionedUserOp(op, ep)`; per-version
+  bindings/filters live in `pkg/entrypoint/v07|v08|v09/`.
+
+### Canonical packed form
+
+After validation, every version is normalized to the **v0.6 packed**
+`UserOperation` via `userop.ConvertToV06Packed(op)` before it enters the mempool.
+The mempool, batch pipeline, and transaction-building code therefore operate on a
+single shape, while version-specific encoding is reapplied by the
+`pkg/entrypoint/vXX/transaction` packages when building the on-chain `handleOps`
+call.
+
+```mermaid
+flowchart LR
+    REQ[JSON-RPC request] --> DET{Detect version}
+    DET -->|v0.6| U6[userop v06]
+    DET -->|v0.7| U7[userop v07]
+    DET -->|v0.8| U8[userop v08]
+    DET -->|v0.9| U9[userop v09]
+    U6 & U7 & U8 & U9 --> IF[UserOperationInterface]
+    IF --> VAL[Validation + Simulation]
+    VAL --> PACK[ConvertToV06Packed]
+    PACK --> MP[Mempool]
+    MP --> TX[vXX transaction builder]
+    TX --> EP[EntryPoint.handleOps]
+```
+
+### EIP-7702 flow (v0.8+)
+
+EIP-7702 lets an EOA act as the smart-account sender by delegating to account
+code. In a UserOperation this is signalled by the `factory` field holding the
+left-aligned marker `0x7702...` (`EIP7702MarkerFactory`) together with an
+`eip7702Auth` authorization tuple.
+
+- The marker is expanded during parsing (`normalizeOptionalFields`) so it is not
+  right-aligned into a normal address.
+- For a marker op, the EntryPoint overrides the initCode hash with
+  `keccak(delegateAddress || factoryData)`; the bundler mirrors this in
+  `hashInitCode()` so the computed `userOpHash` matches on-chain.
+- The authorization tuple is carried in-memory and surfaced to simulation; it is
+  not part of the canonical packed mempool form.
+
+### Paymaster signature flow (v0.9)
+
+v0.9 adds a `paymasterSignature` field that is **excluded from the `userOpHash`**,
+allowing the paymaster to sign in parallel with the account. The paymaster RPC
+(`pm_sponsorUserOperation`) returns the signature separately rather than appended
+to `paymasterAndData`; `pkg/handlers/payg` branches on the v0.9 struct to produce
+this response shape, and `PackForSignature()` omits the field when hashing.
 
 ## Observability
 

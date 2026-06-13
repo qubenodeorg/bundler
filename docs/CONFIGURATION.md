@@ -26,7 +26,34 @@ These variables **must** be set for the bundler to start:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS` | `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` | Comma-separated list of EntryPoint addresses |
+| `ERC4337_BUNDLER_ENTRYPOINT_VERSION` | `auto` | ERC-4337 version: `auto`, `v0.6`, `v0.7`, `v0.8`, `v0.9` |
 | `ERC4337_BUNDLER_BENEFICIARY` | Derived from private key | Address to receive gas fees |
+
+#### EntryPoint Version Detection
+
+The bundler supports ERC-4337 v0.6, v0.7, v0.8, and v0.9 from a single binary.
+The active version controls UserOperation parsing, the userOpHash scheme, gas
+overhead, and which validation rules apply.
+
+With `ERC4337_BUNDLER_ENTRYPOINT_VERSION=auto` (the default), the version is
+inferred from the **first** address in `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS`:
+
+| EntryPoint address | Detected version |
+|--------------------|------------------|
+| `0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789` | `v0.6` |
+| `0x0000000071727De22E5E9d8BAf0edAc6f37da032` | `v0.7` |
+| `0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108` | `v0.8` |
+| `0x433709009B8330FDa32311DF1C2AFA402eD8D009` | `v0.9` |
+
+Setting `ERC4337_BUNDLER_ENTRYPOINT_VERSION` to an explicit version **overrides**
+auto-detection and pins that version for every configured EntryPoint address.
+Use this when running a non-canonical / locally deployed EntryPoint (e.g. in
+tests) whose address is not in the table above — without the override, an
+unknown address falls back to `v0.6`. An unsupported version string is a fatal
+configuration error.
+
+If no EntryPoint is configured and the version is `auto`, the bundler defaults
+to `v0.9`.
 
 ### Gas Configuration
 
@@ -102,6 +129,25 @@ ERC4337_BUNDLER_PORT=4337
 ERC4337_BUNDLER_BENEFICIARY=0x...
 ```
 
+### v0.9 EntryPoint (version auto-detected)
+
+```bash
+ERC4337_BUNDLER_ETH_CLIENT_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
+ERC4337_BUNDLER_PRIVATE_KEY=0x...
+# v0.9 EntryPoint address → version auto-detected as v0.9
+ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS=0x433709009B8330FDa32311DF1C2AFA402eD8D009
+```
+
+### Pinned version for a custom/local EntryPoint
+
+```bash
+ERC4337_BUNDLER_ETH_CLIENT_URL=http://127.0.0.1:8545
+ERC4337_BUNDLER_PRIVATE_KEY=0x...
+# Non-canonical address → pin the version explicitly
+ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS=0xMyLocallyDeployedEntryPoint
+ERC4337_BUNDLER_ENTRYPOINT_VERSION=v0.7
+```
+
 ### Searcher Mode (Ethereum Mainnet)
 
 ```bash
@@ -159,6 +205,7 @@ The bundler validates configuration at startup and will panic with a fatal error
 
 4. **Invalid values:**
    - Unsupported chain ID in searcher mode (only Ethereum mainnet, Goerli, Sepolia)
+   - `ERC4337_BUNDLER_ENTRYPOINT_VERSION` set to a value other than `auto`, `v0.6`, `v0.7`, `v0.8`, or `v0.9`
 
 ## Environment File
 

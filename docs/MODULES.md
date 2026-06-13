@@ -100,8 +100,23 @@ Standard ERC-4337 validation checks.
 
 | Module | Description |
 |--------|-------------|
-| `ValidateOpValues()` | Sanity checks: sender, initCode, gas limits, fees, pending ops |
-| `SimulateOp()` | Runs `simulateValidation` on EntryPoint |
+| `ValidateOpValues()` | Sanity checks: sender, initCode/factory, gas limits, fees, pending ops |
+| `SimulateOp()` | Runs validation simulation against the EntryPoint |
+
+##### Version-Aware Validation
+
+The `checks` package adapts its rules to the resolved EntryPoint version
+(`pkg/modules/checks/standalone.go`, `paymaster.go`, `simulate.go`). Notable
+per-version differences:
+
+| Area | Behavior |
+|------|----------|
+| Paymaster fields | v0.6 validates packed `paymasterAndData`; v0.7+ validate the split `paymaster`, `paymasterVerificationGasLimit`, `paymasterPostOpGasLimit`, and `paymasterData` fields |
+| Simulation | v0.6 uses the on-chain `simulateValidation` method; v0.7+ removed it from the deployed contract, so validation is simulated off-chain with the ERC-7562 tracer |
+| STO-022 | An unstaked paymaster with a staked factory touching sender storage during deployment is an **error** in v0.6/v0.7 (`LegacySTO022`) but **allowed** in v0.8+ |
+| EREP-050 | An unstaked paymaster returning context is enforced in v0.6/v0.8/v0.9 but treated as a regression (accepted) by the v0.7 suite |
+| EIP-7702 | v0.8+ accept the `0x7702` factory marker plus `eip7702Auth` authorization |
+| Paymaster signature | v0.9 treats `paymasterSignature` as optional and excludes it from the `userOpHash` |
 
 ### Bundler Modules
 

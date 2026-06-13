@@ -395,27 +395,27 @@
 **Deliverable**: Compliance tests pass
 
 #### Day 30: Documentation & Release
-- [ ] Update `docs/API.md`:
+- [x] Update `docs/API.md`:
   - New field names in UserOperation
   - New `eip7702Auth` parameter
   - New `paymasterSignature` field
   - Version-aware endpoints
-- [ ] Update `docs/CONFIGURATION.md`:
+- [x] Update `docs/CONFIGURATION.md`:
   - New env vars: `ERC4337_BUNDLER_ENTRYPOINT_VERSION`
   - Version detection behavior
   - Migration guide
-- [ ] Update `docs/ARCHITECTURE.md`:
+- [x] Update `docs/ARCHITECTURE.md`:
   - Version-aware architecture
   - EIP-7702 flow diagrams
   - Paymaster signature flow
-- [ ] Update `docs/MODULES.md`:
+- [x] Update `docs/MODULES.md`:
   - Version-aware modules
   - New validation rules
-- [ ] Update `README.md`:
-  - v0.9 support announcement
+- [x] Update `README.md`:
+  - v0.7, v0.8 and v0.9 support announcement
   - Migration instructions
   - Breaking changes notice
-- [ ] Create `MIGRATION.md`:
+- [x] Create `MIGRATION.md`:
   - Step-by-step migration guide for users
   - Breaking changes list
   - Configuration changes
