@@ -30,7 +30,7 @@ import (
 // implements the required RPC methods as specified in EIP-4337.
 type Client struct {
 	mempool              *mempool.Mempool
-	ov                   *gas.Overhead
+	ovr                  *gas.OverheadResolver
 	chainID              *big.Int
 	supportedEntryPoints []common.Address
 	userOpHandler        modules.UserOpHandlerFunc
@@ -50,7 +50,7 @@ type Client struct {
 // that are allowed to be added to the mempool.
 func New(
 	mempool *mempool.Mempool,
-	ov *gas.Overhead,
+	ovr *gas.OverheadResolver,
 	chainID *big.Int,
 	supportedEntryPoints []common.Address,
 	opLookupLimit uint64,
@@ -60,7 +60,7 @@ func New(
 ) *Client {
 	return &Client{
 		mempool:              mempool,
-		ov:                   ov,
+		ovr:                  ovr,
 		chainID:              chainID,
 		supportedEntryPoints: supportedEntryPoints,
 		userOpHandler:        noop.UserOpHandler,
@@ -71,7 +71,7 @@ func New(
 		getUserOpByHash:      getUserOpByHashNoop(),
 		getStakeFunc:         stake.GetStakeFuncNoop(),
 		opLookupLimit:        opLookupLimit,
-		paygHandler:          payg.New(signer, rpc, eth, chainID, ov),
+		paygHandler:          payg.New(signer, rpc, eth, chainID, ovr),
 		ep2pms: map[common.Address][]common.Address{
 			supportedEntryPoints[0]: {
 				common.HexToAddress("0x2b9755b522757931981ca5b90e821786B75382AB"),
@@ -284,7 +284,7 @@ func (i *Client) EstimateUserOperationGas(
 	}
 
 	// Calculate PreVerificationGas
-	pvg, err := i.ov.CalcPreVerificationGasWithBuffer(userOp)
+	pvg, err := i.ovr.For(version).CalcPreVerificationGasWithBuffer(userOp)
 	if err != nil {
 		l.Error(err, "eth_estimateUserOperationGas error")
 		return nil, err

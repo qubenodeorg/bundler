@@ -36,14 +36,13 @@ type Standalone struct {
 	db                 *badger.DB
 	rpc                *rpc.Client
 	eth                *ethclient.Client
-	ov                 *gas.Overhead
+	ovr                *gas.OverheadResolver
 	alt                *altmempools.Directory
 	maxVerificationGas *big.Int
 	maxBatchGasLimit   *big.Int
 	isRIP7212Supported bool
 	tracer             string
 	repConst           *entities.ReputationConstants
-	version            userop.Version
 }
 
 // New returns a Standalone instance with methods that can be used in Client and Bundler modules to perform
@@ -51,7 +50,7 @@ type Standalone struct {
 func New(
 	db *badger.DB,
 	rpc *rpc.Client,
-	ov *gas.Overhead,
+	ovr *gas.OverheadResolver,
 	alt *altmempools.Directory,
 	maxVerificationGas *big.Int,
 	maxBatchGasLimit *big.Int,
@@ -64,14 +63,13 @@ func New(
 		db,
 		rpc,
 		eth,
-		ov,
+		ovr,
 		alt,
 		maxVerificationGas,
 		maxBatchGasLimit,
 		isRIP7212Supported,
 		tracer,
 		repConst,
-		ov.GetVersion(),
 	}
 }
 
@@ -88,9 +86,9 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 			op := ctx.UserOp.(*userop.UserOperation)
 			g.Go(func() error { return ValidateSender(op, gc) })
 			g.Go(func() error { return ValidateInitCode(op) })
-			g.Go(func() error { return ValidateVerificationGas(op, s.ov, s.maxVerificationGas) })
+			g.Go(func() error { return ValidateVerificationGas(op, s.ovr.For(ctx.Version), s.maxVerificationGas) })
 			g.Go(func() error { return ValidatePaymasterAndData(op, ctx.GetPaymasterDepositInfo(), gc) })
-			g.Go(func() error { return ValidateCallGasLimit(op, s.ov) })
+			g.Go(func() error { return ValidateCallGasLimit(op, s.ovr.For(ctx.Version)) })
 			g.Go(func() error { return ValidateFeePerGas(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
 			g.Go(func() error { return ValidatePendingOps(op, ctx.GetPendingSenderOps()) })
 			g.Go(func() error { return ValidateGasAvailable(op, s.maxBatchGasLimit) })
@@ -101,7 +99,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 			g.Go(func() error { return ValidateFactory(op) })
 			g.Go(func() error { return ValidateFactoryData(op) })
 			g.Go(func() error {
-				return ValidateVerificationGasV07(op, s.ov, s.maxVerificationGas)
+				return ValidateVerificationGasV07(op, s.ovr.For(ctx.Version), s.maxVerificationGas)
 			})
 			g.Go(func() error {
 				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.GetPendingPaymasterOps(), ctx.Version)
@@ -116,10 +114,10 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 				return ValidatePaymasterPostOpGasLimit(op)
 			})
 			g.Go(func() error { return ValidateEIP7702Auth(op, ctx.ChainID) })
-			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ov) })
+			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ovr.For(ctx.Version)) })
 			g.Go(func() error { return ValidateFeePerGasV07(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
 			g.Go(func() error { return ValidatePendingOpsV07(op, ctx.GetPendingSenderOps()) })
-			g.Go(func() error { return ValidateGasAvailableV07(op, s.ov, s.maxBatchGasLimit) })
+			g.Go(func() error { return ValidateGasAvailableV07(op, s.ovr.For(ctx.Version), s.maxBatchGasLimit) })
 		default:
 			// v0.7/v0.8 use the interface-based validation functions
 			op := ctx.UserOp
@@ -127,7 +125,7 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 			g.Go(func() error { return ValidateFactory(op) })
 			g.Go(func() error { return ValidateFactoryData(op) })
 			g.Go(func() error {
-				return ValidateVerificationGasV07(op, s.ov, s.maxVerificationGas)
+				return ValidateVerificationGasV07(op, s.ovr.For(ctx.Version), s.maxVerificationGas)
 			})
 			g.Go(func() error {
 				return ValidatePaymaster(op, ctx.GetPaymasterDepositInfo(), gc, ctx.GetPendingPaymasterOps(), ctx.Version)
@@ -142,10 +140,10 @@ func (s *Standalone) ValidateOpValues() modules.UserOpHandlerFunc {
 				return ValidatePaymasterPostOpGasLimit(op)
 			})
 			g.Go(func() error { return ValidateEIP7702Auth(op, ctx.ChainID) })
-			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ov) })
+			g.Go(func() error { return ValidateCallGasLimitV07(op, s.ovr.For(ctx.Version)) })
 			g.Go(func() error { return ValidateFeePerGasV07(op, gasprice.GetBaseFeeWithEthClient(s.eth)) })
 			g.Go(func() error { return ValidatePendingOpsV07(op, ctx.GetPendingSenderOps()) })
-			g.Go(func() error { return ValidateGasAvailableV07(op, s.ov, s.maxBatchGasLimit) })
+			g.Go(func() error { return ValidateGasAvailableV07(op, s.ovr.For(ctx.Version), s.maxBatchGasLimit) })
 		}
 
 		if err := g.Wait(); err != nil {
@@ -225,7 +223,7 @@ func (s *Standalone) SimulateOp() modules.UserOpHandlerFunc {
 					ctx.EntryPoint,
 					ctx.UserOp,
 					ctx.ChainID,
-					s.ov,
+					s.ovr.For(ctx.Version),
 					s.alt,
 					s.isRIP7212Supported,
 					s.tracer,
@@ -391,7 +389,7 @@ func (s *Standalone) traceForBatch(
 		stakes[addr] = dep
 	}
 
-	switch s.version {
+	switch userop.DetectVersionFromEntryPoint(ctx.EntryPoint) {
 	case userop.V0_7:
 		out, err := v07sim.TraceSimulateValidation(&v07sim.TraceInput{
 			Rpc:                s.rpc,

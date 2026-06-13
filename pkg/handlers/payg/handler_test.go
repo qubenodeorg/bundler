@@ -39,7 +39,7 @@ func newHandler(t *testing.T) *Handler {
 	t.Cleanup(n.Close)
 	r, _ := rpc.Dial(n.URL)
 	eth := ethclient.NewClient(r)
-	return New(testutils.DummyEOA, r, eth, testutils.ChainID, gas.NewDefaultOverhead())
+	return New(testutils.DummyEOA, r, eth, testutils.ChainID, gas.NewOverheadResolver())
 }
 
 func TestNew(t *testing.T) {

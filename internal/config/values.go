@@ -49,8 +49,14 @@ type Values struct {
 	IsRIP7212Supported bool
 	IsArbStackNetwork  bool
 
-	// EntryPoint version (auto-detected or explicitly set).
+	// EntryPoint version of the preferred (index 0) EntryPoint. Retained for
+	// the rollup preVerificationGas default and backward compatibility.
 	EntryPointVersion userop.Version
+
+	// EntryPointVersions is the deduped set of versions implied by every
+	// configured EntryPoint, in the order they first appear. The bundler builds
+	// one gas Overhead per entry so a single instance serves all of them.
+	EntryPointVersions []userop.Version
 
 	// Undocumented variables.
 	DebugMode bool
@@ -65,6 +71,29 @@ func envKeyValStringToMap(s string) map[string]string {
 			break
 		}
 		out[kv[0]] = kv[1]
+	}
+	return out
+}
+
+// dedupeVersions returns the versions implied by the configured EntryPoints, in
+// first-seen order with duplicates removed. When no EntryPoints are configured
+// it returns the fallback version so the resolver is never empty.
+func dedupeVersions(entryPoints []common.Address, fallback userop.Version) []userop.Version {
+	seen := map[userop.Version]bool{}
+	out := []userop.Version{}
+	for _, ep := range entryPoints {
+		if ep == (common.Address{}) {
+			continue
+		}
+		v := userop.DetectVersionFromEntryPoint(ep)
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	if len(out) == 0 {
+		return []userop.Version{fallback}
 	}
 	return out
 }
@@ -95,7 +124,18 @@ func GetValues() *Values {
 	// Default variables
 	viper.SetDefault("erc4337_bundler_port", 4337)
 	viper.SetDefault("erc4337_bundler_data_directory", "/tmp/qubenode_bundler")
-	viper.SetDefault("erc4337_bundler_supported_entry_points", "0x433709009B8330FDa32311DF1C2AFA402eD8D009")
+	// Default to every canonical EntryPoint (v0.6–v0.9) so a single instance
+	// serves all versions at once. Order matters: index 0 is the preferred
+	// EntryPoint reported by eth_supportedEntryPoints.
+	viper.SetDefault(
+		"erc4337_bundler_supported_entry_points",
+		strings.Join([]string{
+			"0x433709009B8330FDa32311DF1C2AFA402eD8D009", // v0.9
+			"0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108", // v0.8
+			"0x0000000071727De22E5E9d8BAf0edAc6f37da032", // v0.7
+			"0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789", // v0.6
+		}, ","),
+	)
 	viper.SetDefault("erc4337_bundler_entrypoint_version", "auto")
 	viper.SetDefault("erc4337_bundler_max_verification_gas", 6000000)
 	viper.SetDefault("erc4337_bundler_max_batch_gas_limit", 18000000)
@@ -234,6 +274,11 @@ func GetValues() *Values {
 		}
 	}
 
+	// Build the deduped set of versions the instance must serve, one per
+	// configured EntryPoint (after any explicit override above). Falls back to
+	// the preferred version when no EntryPoints are configured.
+	entryPointVersions := dedupeVersions(supportedEntryPoints, entryPointVersion)
+
 	return &Values{
 		PrivateKey:                   privateKey,
 		EthClientUrl:                 ethClientUrl,
@@ -241,6 +286,7 @@ func GetValues() *Values {
 		DataDirectory:                dataDirectory,
 		SupportedEntryPoints:         supportedEntryPoints,
 		EntryPointVersion:            entryPointVersion,
+		EntryPointVersions:           entryPointVersions,
 		Beneficiary:                  beneficiary,
 		NativeBundlerCollectorTracer: nativeBundlerCollectorTracer,
 		NativeBundlerExecutorTracer:  nativeBundlerExecutorTracer,

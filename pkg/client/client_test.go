@@ -48,8 +48,8 @@ func newTestClient(t *testing.T, eps ...common.Address) (*Client, *mempool.Mempo
 	}
 	eth := ethclient.NewClient(r)
 
-	ov := gas.NewDefaultOverhead()
-	c := New(mem, ov, testutils.ChainID, eps, 100, testutils.DummyEOA, eth, r)
+	ovr := gas.NewOverheadResolver(userop.V0_6, userop.V0_7, userop.V0_8, userop.V0_9)
+	c := New(mem, ovr, testutils.ChainID, eps, 100, testutils.DummyEOA, eth, r)
 	c.SetGetGasPricesFunc(func() (*fees.GasPrices, error) {
 		return &fees.GasPrices{MaxFeePerGas: big.NewInt(1), MaxPriorityFeePerGas: big.NewInt(1)}, nil
 	})
@@ -207,7 +207,6 @@ func TestClient_EstimateUserOperationGas_V06(t *testing.T) {
 
 func TestClient_EstimateUserOperationGas_V07PopulatesPaymasterFields(t *testing.T) {
 	c, _ := newTestClient(t, common.HexToAddress(v07EP))
-	c.ov = gas.NewDefaultOverheadV07()
 	v07Data := map[string]any{
 		"sender":                        "0xa13D69573f994bf662C2714560c44dd7266FC547",
 		"nonce":                         "0x0",

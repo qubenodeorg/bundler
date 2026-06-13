@@ -29,6 +29,7 @@ import (
 	"github.com/zarbanio/bundler/pkg/modules/relay"
 	"github.com/zarbanio/bundler/pkg/signer"
 	"github.com/zarbanio/bundler/pkg/tracer"
+	"github.com/zarbanio/bundler/pkg/userop"
 
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
@@ -91,23 +92,40 @@ func PrivateMode() {
 		defer metricsCleanup()
 	}
 
-	ov := gas.NewDefaultOverheadForVersion(conf.EntryPointVersion)
-	// The PVG estimate is computed for the op as submitted to estimateGas, but
-	// the op later sent can differ slightly in byte content (e.g. a different
-	// sender deployed in between), shifting the calldata cost by a few gas per
-	// byte. A small buffer keeps returned estimates acceptable at send time.
-	ov.SetPreVerificationGasBufferFactor(1)
-	if conf.IsArbStackNetwork || config.ArbStackChains.Contains(chain.Uint64()) {
-		ov.SetCalcPreVerificationGasFunc(gas.CalcArbitrumPVGWithEthClient(rpc, conf.SupportedEntryPoints[0]))
-		ov.SetPreVerificationGasBufferFactor(16)
+	// Build one gas Overhead per configured EntryPoint version so a single
+	// instance can serve all of them with version-correct PVG math.
+	ovr := gas.NewOverheadResolver(conf.EntryPointVersions...)
+	// Map each version to its configured EntryPoint address, used by the
+	// rollup-specific preVerificationGas functions below.
+	epForVersion := map[userop.Version]common.Address{}
+	for _, ep := range conf.SupportedEntryPoints {
+		v := userop.DetectVersionFromEntryPoint(ep)
+		if _, ok := epForVersion[v]; !ok {
+			epForVersion[v] = ep
+		}
 	}
-
-	if conf.IsOpStackNetwork || config.OpStackChains.Contains(chain.Uint64()) {
-		ov.SetCalcPreVerificationGasFunc(
-			gas.CalcOptimismPVGWithEthClient(rpc, chain, conf.SupportedEntryPoints[0]),
-		)
+	isArbStack := conf.IsArbStackNetwork || config.ArbStackChains.Contains(chain.Uint64())
+	isOpStack := conf.IsOpStackNetwork || config.OpStackChains.Contains(chain.Uint64())
+	ovr.Each(func(v userop.Version, ov *gas.Overhead) {
+		// The PVG estimate is computed for the op as submitted to estimateGas,
+		// but the op later sent can differ slightly in byte content (e.g. a
+		// different sender deployed in between), shifting the calldata cost by a
+		// few gas per byte. A small buffer keeps returned estimates acceptable
+		// at send time.
 		ov.SetPreVerificationGasBufferFactor(1)
-	}
+		ep, ok := epForVersion[v]
+		if !ok {
+			return
+		}
+		if isArbStack {
+			ov.SetCalcPreVerificationGasFunc(gas.CalcArbitrumPVGWithEthClient(rpc, ep))
+			ov.SetPreVerificationGasBufferFactor(16)
+		}
+		if isOpStack {
+			ov.SetCalcPreVerificationGasFunc(gas.CalcOptimismPVGWithEthClient(rpc, chain, ep))
+			ov.SetPreVerificationGasBufferFactor(1)
+		}
+	})
 
 	mem, err := mempool.New(db)
 	if err != nil {
@@ -122,7 +140,7 @@ func PrivateMode() {
 	check := checks.New(
 		db,
 		rpc,
-		ov,
+		ovr,
 		alt,
 		conf.MaxVerificationGas,
 		conf.MaxBatchGasLimit,
@@ -141,7 +159,7 @@ func PrivateMode() {
 	// Init Client
 	c := client.New(
 		mem,
-		ov,
+		ovr,
 		chain,
 		conf.SupportedEntryPoints,
 		conf.OpLookupLimit,
@@ -154,7 +172,7 @@ func PrivateMode() {
 	c.SetGetGasEstimateFunc(
 		client.GetGasEstimateWithEthClient(
 			rpc,
-			ov,
+			ovr,
 			chain,
 			conf.MaxBatchGasLimit,
 			conf.NativeBundlerExecutorTracer,
