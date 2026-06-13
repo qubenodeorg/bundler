@@ -8,6 +8,7 @@ import (
 	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/gin-gonic/gin"
+	"github.com/go-logr/logr"
 )
 
 // healthCheckTimeout bounds the dependency probes in the readiness handler so a
@@ -27,7 +28,11 @@ func livenessHandler() gin.HandlerFunc {
 // eth RPC is reachable and the mempool DB is usable. It returns 503 when a
 // dependency is unavailable so load balancers stop routing to a degraded
 // instance without it being restarted.
-func readinessHandler(eth *ethclient.Client, db *badger.DB) gin.HandlerFunc {
+//
+// Check values are stable, sanitized strings ("ok" / "unavailable"); the raw
+// dependency error is written to the server log only, never serialized to the
+// (potentially public) response, to avoid leaking internal infrastructure detail.
+func readinessHandler(eth *ethclient.Client, db *badger.DB, logr logr.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), healthCheckTimeout)
 		defer cancel()
@@ -36,7 +41,8 @@ func readinessHandler(eth *ethclient.Client, db *badger.DB) gin.HandlerFunc {
 		ready := true
 
 		if _, err := eth.BlockNumber(ctx); err != nil {
-			checks["eth_client"] = err.Error()
+			logr.Error(err, "readiness check failed", "dependency", "eth_client")
+			checks["eth_client"] = "unavailable"
 			ready = false
 		} else {
 			checks["eth_client"] = "ok"
@@ -45,7 +51,8 @@ func readinessHandler(eth *ethclient.Client, db *badger.DB) gin.HandlerFunc {
 		// A no-op read transaction confirms the DB is open and usable; it returns
 		// an error (e.g. ErrDBClosed) if the store is unavailable.
 		if err := db.View(func(txn *badger.Txn) error { return nil }); err != nil {
-			checks["db"] = err.Error()
+			logr.Error(err, "readiness check failed", "dependency", "db")
+			checks["db"] = "unavailable"
 			ready = false
 		} else {
 			checks["db"] = "ok"

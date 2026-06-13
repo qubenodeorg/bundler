@@ -216,7 +216,7 @@ func SearcherMode() {
 	)
 	r.GET("/ping", livenessHandler())
 	r.GET("/live", livenessHandler())
-	r.GET("/ready", readinessHandler(eth, db))
+	r.GET("/ready", readinessHandler(eth, db, logr))
 	handlers := []gin.HandlerFunc{
 		jsonrpc.Controller(client.NewRpcAdapter(c, d, rpc)),
 		jsonrpc.WithOTELTracerAttributes(),

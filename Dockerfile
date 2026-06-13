@@ -26,6 +26,10 @@ RUN CGO_ENABLED=1 go build \
 FROM debian:bookworm-slim
 
 # ca-certificates for outbound TLS (RPC providers); wget is used by HEALTHCHECK.
+# DL3008 (pin apt versions) is intentionally ignored: hard-pinning base-image
+# package versions breaks the build once Debian supersedes them with security
+# updates, which we want to pick up automatically.
+# hadolint ignore=DL3008
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \

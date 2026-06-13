@@ -511,12 +511,14 @@ dependencies, so a failure means the process itself is broken and should be
 restarted. `GET /ping` is a backwards-compatible alias.
 
 **Request:**
-```
+
+```http
 GET http://localhost:4337/live
 ```
 
 **Response:**
-```json
+
+```http
 HTTP/1.1 200 OK
 
 { "status": "ok" }
@@ -528,15 +530,19 @@ Readiness probe. Checks the dependencies required to serve traffic — the
 upstream eth JSON-RPC endpoint and the mempool database. Returns `200` when all
 checks pass and `503 Service Unavailable` when any dependency is degraded, so a
 load balancer can stop routing to the instance without it being restarted. The
-probes are bounded by a short internal timeout.
+probes are bounded by a short internal timeout. Check values are stable,
+sanitized strings (`ok` / `unavailable`); the underlying error is written to the
+server log, not the response.
 
 **Request:**
-```
+
+```http
 GET http://localhost:4337/ready
 ```
 
 **Response (healthy):**
-```json
+
+```http
 HTTP/1.1 200 OK
 
 {
@@ -546,12 +552,13 @@ HTTP/1.1 200 OK
 ```
 
 **Response (eth RPC unreachable):**
-```json
+
+```http
 HTTP/1.1 503 Service Unavailable
 
 {
   "ready": false,
-  "checks": { "eth_client": "context deadline exceeded", "db": "ok" }
+  "checks": { "eth_client": "unavailable", "db": "ok" }
 }
 ```
 
