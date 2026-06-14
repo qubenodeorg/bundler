@@ -22,32 +22,22 @@ RUN CGO_ENABLED=1 go build \
     -ldflags="-s -w -X main.version=${VERSION}" \
     -o /app/qubenode-bundler
 
+# Prepare a writable data directory for the distroless nonroot user (uid 65532).
+RUN mkdir -p /data && chown -R 65532:65532 /data
+
 # ---- Runtime stage ----
-FROM debian:bookworm-slim
+# distroless removes the package-manager step (and its cache) and ships with
+# ca-certificates already installed. The cc variant includes the C libraries
+# required by the CGO-enabled binary. The nonroot tag runs as uid 65532 and
+# contains no shell or utilities, so the HEALTHCHECK uses a built-in command.
+FROM gcr.io/distroless/cc-debian12:nonroot
 
-# ca-certificates for outbound TLS (RPC providers); wget is used by HEALTHCHECK.
-# DL3008 (pin apt versions) is intentionally ignored: hard-pinning base-image
-# package versions breaks the build once Debian supersedes them with security
-# updates, which we want to pick up automatically.
-# hadolint ignore=DL3008
-RUN set -eux; \
-    apt-get update; \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates \
-        wget; \
-    rm -rf /var/lib/apt/lists/*
-
-# Run as an unprivileged user. The data directory is owned by that user so
-# BadgerDB can persist the mempool across restarts.
-RUN groupadd --system --gid 10001 bundler \
-    && useradd --system --uid 10001 --gid bundler --home-dir /app --no-create-home bundler \
-    && mkdir -p /app /data \
-    && chown -R bundler:bundler /app /data
-
-COPY --from=builder --chown=bundler:bundler /app/qubenode-bundler /app/qubenode-bundler
-
-USER bundler
 WORKDIR /app
+
+COPY --from=builder --chown=65532:65532 /app/qubenode-bundler /app/qubenode-bundler
+COPY --from=builder --chown=65532:65532 /data /data
+
+USER nonroot:nonroot
 
 # Persist BadgerDB to a mountable volume rather than ephemeral /tmp.
 ENV ERC4337_BUNDLER_DATA_DIRECTORY=/data
@@ -56,10 +46,10 @@ VOLUME ["/data"]
 EXPOSE 4337
 
 # /live returns 200 once the HTTP server is up (no upstream dependencies).
-# Use a GET that discards the body (-O /dev/null), not --spider: --spider sends
-# a HEAD request and the liveness route is registered for GET only (404 on HEAD).
+# A built-in healthcheck subcommand is used because the distroless image has no
+# shell or wget.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 -O /dev/null http://127.0.0.1:4337/live || exit 1
+    CMD ["/app/qubenode-bundler", "healthcheck"]
 
 ENTRYPOINT ["/app/qubenode-bundler"]
 CMD ["start", "--mode", "private"]
