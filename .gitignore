@@ -19,3 +19,6 @@
 tmp
 .env
 .e2e-state.json
+
+# Deployment secrets (keep the .example, never the real key)
+secrets/bundler_private_key.txt
