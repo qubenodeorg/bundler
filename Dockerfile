@@ -56,8 +56,10 @@ VOLUME ["/data"]
 EXPOSE 4337
 
 # /live returns 200 once the HTTP server is up (no upstream dependencies).
+# Use a GET that discards the body (-O /dev/null), not --spider: --spider sends
+# a HEAD request and the liveness route is registered for GET only (404 on HEAD).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://127.0.0.1:4337/live || exit 1
+    CMD wget --quiet --tries=1 -O /dev/null http://127.0.0.1:4337/live || exit 1
 
 ENTRYPOINT ["/app/qubenode-bundler"]
 CMD ["start", "--mode", "private"]
