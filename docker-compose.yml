@@ -1,11 +1,15 @@
 # Production deployment for the qubenode ERC-4337 bundler (Dokploy / Docker Compose).
 #
-# The bundler EOA private key is supplied as a Docker secret (a file mounted at
-# /run/secrets/bundler_private_key), NOT as a plaintext environment variable.
-# The binary itself only reads the key from ERC4337_BUNDLER_PRIVATE_KEY, so the
-# entrypoint below loads the secret file into that variable at startup (stripping
-# surrounding whitespace and an optional 0x prefix) and then exec's the bundler
-# so it remains PID 1 and receives SIGTERM for graceful shutdown.
+# The bundler EOA private key is supplied as a FILE mounted at
+# /run/secrets/bundler_private_key, NOT as a plaintext environment variable. On
+# Dokploy, create that file via Advanced -> Volumes/Mounts -> File Mount (mount
+# path /run/secrets/bundler_private_key, content = the bare hex key). For local
+# `docker compose`, uncomment the bind mount under `volumes:` below.
+#
+# The binary only reads the key from ERC4337_BUNDLER_PRIVATE_KEY, so the
+# entrypoint loads that file into the variable at startup (stripping surrounding
+# whitespace and an optional 0x prefix) and then exec's the bundler so it remains
+# PID 1 and receives SIGTERM for graceful shutdown.
 
 services:
   bundler:
@@ -17,9 +21,6 @@ services:
     # and set, e.g.:  image: ghcr.io/qubenodeorg/bundler:latest
     image: qubenode-bundler:latest
     restart: unless-stopped
-
-    secrets:
-      - bundler_private_key
 
     environment:
       # --- Required ---
@@ -62,6 +63,9 @@ services:
     volumes:
       # Persist the BadgerDB mempool across restarts/redeploys.
       - bundler-data:/data
+      # LOCAL DEV ONLY (on Dokploy a File Mount supplies this path instead):
+      # bind-mount a host key file to the path the entrypoint reads.
+      # - ./secrets/bundler_private_key.txt:/run/secrets/bundler_private_key:ro
 
     # The image ships a HEALTHCHECK hitting /live; restate it here so Compose/
     # Dokploy surface health without depending on image internals.
@@ -79,13 +83,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-secrets:
-  bundler_private_key:
-    # File-based secret. Create ./secrets/bundler_private_key.txt containing the
-    # bare hex key (no 0x, no trailing newline) and chmod it 0444 so the
-    # in-container bundler user (uid 10001) can read it. The file is gitignored.
-    file: ./secrets/bundler_private_key.txt
 
 volumes:
   bundler-data:
