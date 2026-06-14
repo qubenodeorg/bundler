@@ -1,74 +1,67 @@
 # Deploying on Dokploy (Docker Compose)
 
 The bundler ships a production `docker-compose.yml` that runs a single instance
-serving all ERC-4337 versions (v0.6–v0.9) and reads the EOA private key from a
-**file** mounted at `/run/secrets/bundler_private_key` — never a plaintext
-environment variable.
+serving all ERC-4337 versions (v0.6–v0.9). The EOA private key is read from the
+**environment variable** `ERC4337_BUNDLER_PRIVATE_KEY`, exactly like the RPC URL.
 
 ## How the key is wired
 
-The binary only reads the key from `ERC4337_BUNDLER_PRIVATE_KEY`. The service
-entrypoint reads the mounted file at startup — stripping whitespace and an
-optional `0x` prefix — exports it into that variable, then `exec`s the bundler so
-it stays PID 1 and shuts down cleanly on SIGTERM. The key never appears in the
-compose file, the image, the Git repo, or `docker inspect`.
+The binary reads the key directly from `ERC4337_BUNDLER_PRIVATE_KEY`.
+`docker compose` resolves it from a `.env` file next to the compose file or from
+Dokploy's Environment settings. No startup wrapper or file mount is used, so the
+bundler process remains PID 1 and shuts down cleanly on SIGTERM.
 
-Because Dokploy deploys from a **Git clone**, the key file cannot live in the
-repo. Supply it through Dokploy's File Mount feature (below).
+> The private key value is not baked into the image or stored in the Git repo,
+> but like all container environment variables it is visible via
+> `docker inspect` and the Docker daemon. On Dokploy, mark the variable as
+> **sensitive/secret** in the Environment tab so it is masked in the UI.
 
 ## Steps (Dokploy)
 
-1. **Set non-secret config.** App → **Environment** tab → add at minimum:
+1. **Set required config.** App → **Environment** tab → add at minimum:
 
    ```
    ERC4337_BUNDLER_ETH_CLIENT_URL=https://your-rpc-endpoint
+   ERC4337_BUNDLER_PRIVATE_KEY=YOUR_BARE_HEX_KEY
    ```
 
-   Dokploy writes this to a `.env` file next to the compose, which
-   `docker compose` uses for `${…}` interpolation. The compose marks this
-   variable **required**, so the deploy fails fast until it is set.
+   The key may be supplied with or without a leading `0x`. Dokploy writes these
+   to a `.env` file next to the compose, and `docker compose` uses them for
+   `${…}` interpolation. Both variables are marked **required**, so the deploy
+   fails fast until they are set.
+
    `ERC4337_BUNDLER_SUPPORTED_ENTRY_POINTS` defaults to all four canonical
    EntryPoints — leave it unset to serve every version. See
    [CONFIGURATION.md](./CONFIGURATION.md) for the full list.
 
-2. **Add the private key as a File Mount.** App → **Advanced → Volumes/Mounts**
-   → add a **File Mount**:
-   - **Mount path:** `/run/secrets/bundler_private_key`
-   - **Content:** the bare hex key — **no `0x`**, no trailing newline
-     (the entrypoint tolerates both, but keep it clean).
-
-   This keeps the key out of environment variables and `docker inspect`; it lives
-   only in Dokploy's mount and the mounted file.
-
-3. **Deploy.** Dokploy runs
+2. **Deploy.** Dokploy runs
    `docker compose -p <app> -f ./docker-compose.yml up -d --build`. To expose the
    service, either keep the `4337:4337` port mapping or attach a domain and let
    Dokploy's Traefik proxy route to container port `4337` (then drop the
    `ports:` mapping).
 
-> If the entrypoint logs `FATAL: /run/secrets/bundler_private_key missing or
-> unreadable by uid 10001`, the File Mount is absent or not readable by the
-> in-container user (uid **10001**). Re-check the mount path and that its content
-> is set.
+> If the container exits with `Fatal config error: erc4337_bundler_private_key not
+> set`, `ERC4337_BUNDLER_PRIVATE_KEY` is missing from the Environment tab.
 
 ## Local testing (plain `docker compose`, no Dokploy)
 
-Supply the key by bind-mounting a host file to the same path. In
-`docker-compose.yml` uncomment the bind mount under `volumes:`:
-
-```yaml
-- ./secrets/bundler_private_key.txt:/run/secrets/bundler_private_key:ro
-```
-
-then create the file (`.example` provided) and run:
+Copy `.env.example` to `.env` and fill in the two required variables:
 
 ```sh
-printf '%s' 'YOUR_BARE_HEX_KEY' > secrets/bundler_private_key.txt   # no 0x, no newline
-chmod 0444 secrets/bundler_private_key.txt
-ERC4337_BUNDLER_ETH_CLIENT_URL=https://your-rpc docker compose up --build
+cp .env.example .env
+# edit .env
+ERC4337_BUNDLER_ETH_CLIENT_URL=https://your-rpc
+ERC4337_BUNDLER_PRIVATE_KEY=YOUR_BARE_HEX_KEY
+BUNDLER_VERSION=dev
 ```
 
-`secrets/bundler_private_key.txt` is gitignored.
+Then run:
+
+```sh
+docker compose up --build
+```
+
+`.env` is gitignored.
 
 ## Verifying
 
@@ -81,3 +74,11 @@ ERC4337_BUNDLER_ETH_CLIENT_URL=https://your-rpc docker compose up --build
 
 The BadgerDB mempool persists in the named `bundler-data` volume across restarts
 and redeploys.
+
+## Notes on the runtime image
+
+The final image is `gcr.io/distroless/cc-debian12:nonroot`. It has no package
+manager, shell, or utilities, so the bundled Docker HEALTHCHECK uses a built-in
+`healthcheck` subcommand (`/app/qubenode-bundler healthcheck`) that probes
+`http://127.0.0.1:4337/live`. The process runs as the unprivileged `nonroot`
+user (uid 65532).
