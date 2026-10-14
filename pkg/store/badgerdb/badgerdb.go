@@ -116,11 +116,16 @@ func (s *Store) loadMempool() error {
 			ep := common.HexToAddress(strings.SplitN(rest, ":", 2)[0])
 
 			if err := item.Value(func(v []byte) error {
-				op, err := decodeOp(v)
+				op, seq, err := decodeOp(v)
 				if err != nil {
 					return err
 				}
-				s.queue.Add(ep, op)
+				if seq > 0 {
+					// Preserve the persisted arrival order across restarts.
+					s.queue.Insert(ep, op, seq)
+				} else {
+					s.queue.Add(ep, op)
+				}
 				return nil
 			}); err != nil {
 				return err
@@ -130,9 +135,36 @@ func (s *Store) loadMempool() error {
 	})
 }
 
-func decodeOp(value []byte) (*userop.UserOperation, error) {
+// persistedOp is the on-disk envelope: the op plus its arrival score. The score
+// is what preserves arrival order across a restart.
+type persistedOp struct {
+	Seq uint64          `json:"seq"`
+	Op  json.RawMessage `json:"op"`
+}
+
+func encodeOp(op *userop.UserOperation, seq uint64) ([]byte, error) {
+	raw, err := op.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(persistedOp{Seq: seq, Op: raw})
+}
+
+// decodeOp reads either the current envelope format or a legacy bare op value
+// (seq 0), so data written by earlier releases keeps loading.
+func decodeOp(value []byte) (*userop.UserOperation, uint64, error) {
+	var env persistedOp
+	if err := json.Unmarshal(value, &env); err == nil && len(env.Op) > 0 {
+		op, err := opFromJSON(env.Op)
+		return op, env.Seq, err
+	}
+	op, err := opFromJSON(value)
+	return op, 0, err
+}
+
+func opFromJSON(raw []byte) (*userop.UserOperation, error) {
 	data := make(map[string]any)
-	if err := json.Unmarshal(value, &data); err != nil {
+	if err := json.Unmarshal(raw, &data); err != nil {
 		return nil, err
 	}
 	return userop.New(data)
@@ -141,7 +173,11 @@ func decodeOp(value []byte) (*userop.UserOperation, error) {
 type mempoolStore struct{ s *Store }
 
 func (m *mempoolStore) Add(_ context.Context, ep common.Address, op *userop.UserOperation) error {
-	data, err := op.MarshalJSON()
+	// Reserve the arrival score first, persist it with the op, then index it. A
+	// failed persist leaves only an unused score (harmless gap) and no queue
+	// entry, so storage and the in-memory index stay consistent.
+	seq := m.s.queue.Next(ep)
+	data, err := encodeOp(op, seq)
 	if err != nil {
 		return err
 	}
@@ -150,7 +186,7 @@ func (m *mempoolStore) Add(_ context.Context, ep common.Address, op *userop.User
 	}); err != nil {
 		return err
 	}
-	m.s.queue.Add(ep, op)
+	m.s.queue.Insert(ep, op, seq)
 	return nil
 }
 
@@ -216,15 +252,16 @@ type reputationStore struct{ s *Store }
 func (r *reputationStore) Status(_ context.Context, entity common.Address, params store.ReputationParams) (store.ReputationStatus, error) {
 	var status store.ReputationStatus
 	now := time.Now()
-	err := r.s.db.Update(func(txn *badger.Txn) error {
-		key := r.s.reputationKey(entity)
-		c, err := readOpsCount(txn, key)
+	// Read-only: decay is computed, not persisted, so merely checking an entity
+	// never creates a key or resets its decay clock.
+	err := r.s.db.View(func(txn *badger.Txn) error {
+		c, err := readOpsCount(txn, r.s.reputationKey(entity))
 		if err != nil {
 			return err
 		}
-		c = c.Decayed(now)
-		status = store.ComputeStatus(c.Seen, c.Included, params)
-		return txn.Set(key, c.Encode())
+		d := c.Decayed(now)
+		status = store.ComputeStatus(d.Seen, d.Included, params)
+		return nil
 	})
 	return status, err
 }
@@ -232,15 +269,14 @@ func (r *reputationStore) Status(_ context.Context, entity common.Address, param
 func (r *reputationStore) OpsCount(_ context.Context, entity common.Address) (int, int, error) {
 	var seen, included int
 	now := time.Now()
-	err := r.s.db.Update(func(txn *badger.Txn) error {
-		key := r.s.reputationKey(entity)
-		c, err := readOpsCount(txn, key)
+	err := r.s.db.View(func(txn *badger.Txn) error {
+		c, err := readOpsCount(txn, r.s.reputationKey(entity))
 		if err != nil {
 			return err
 		}
-		c = c.Decayed(now)
-		seen, included = c.Seen, c.Included
-		return txn.Set(key, c.Encode())
+		d := c.Decayed(now)
+		seen, included = d.Seen, d.Included
+		return nil
 	})
 	return seen, included, err
 }
@@ -279,7 +315,7 @@ func (r *reputationStore) Dump(_ context.Context) ([]store.ReputationEntry, erro
 	out := []store.ReputationEntry{}
 	prefix := []byte(r.s.reputationPrefix())
 	now := time.Now()
-	err := r.s.db.Update(func(txn *badger.Txn) error {
+	err := r.s.db.View(func(txn *badger.Txn) error {
 		opts := badger.DefaultIteratorOptions
 		it := txn.NewIterator(opts)
 		defer it.Close()

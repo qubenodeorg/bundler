@@ -35,7 +35,13 @@ type Bundler struct {
 	gbf                  gasprice.GetBaseFeeFunc
 	ggt                  gasprice.GetGasTipFunc
 	ggp                  gasprice.GetLegacyGasPriceFunc
+	locker               store.Locker
 }
+
+// bundleLockTTL bounds how long one replica may hold the per-EntryPoint bundle
+// lock. It must exceed the worst-case batch duration so a slow bundle is not
+// stolen mid-flight, while still letting a crashed replica's lock expire.
+const bundleLockTTL = 2 * time.Minute
 
 // New initializes a new EIP-4337 bundler which can be extended with modules for validating batches and
 // excluding UserOperations that should not be sent to the EntryPoint and/or dropped from the mempool.
@@ -54,6 +60,16 @@ func New(mempool store.MempoolStore, chainID *big.Int, supportedEntryPoints []co
 		gbf:                  gasprice.NoopGetBaseFeeFunc(),
 		ggt:                  gasprice.NoopGetGasTipFunc(),
 		ggp:                  gasprice.NoopGetLegacyGasPriceFunc(),
+		locker:               store.NoopLocker{},
+	}
+}
+
+// SetLocker defines the distributed lock manager used to ensure only one
+// replica builds a bundle for a given EntryPoint at a time. Defaults to a
+// no-op locker, which is correct for single-instance deployments.
+func (i *Bundler) SetLocker(l store.Locker) {
+	if l != nil {
+		i.locker = l
 	}
 }
 
@@ -118,6 +134,21 @@ func (i *Bundler) Process(ep common.Address) (*modules.BatchHandlerCtx, error) {
 		WithName("run").
 		WithValues("entrypoint", ep.String()).
 		WithValues("chain_id", i.chainID.String())
+
+	// Take a shared per-EntryPoint lock so only one replica bundles for this
+	// EntryPoint at a time. Skip the round if another replica holds it; release
+	// once processing finishes so the next round can proceed.
+	lockKey := "bundle:" + i.chainID.String() + ":" + ep.String()
+	lock, acquired, err := i.locker.TryLock(context.Background(), lockKey, bundleLockTTL)
+	if err != nil {
+		l.Error(err, "bundler run error")
+		return nil, err
+	}
+	if !acquired {
+		l.V(1).Info("bundle lock held by another replica, skipping")
+		return nil, nil
+	}
+	defer func() { _ = lock.Unlock(context.Background()) }()
 
 	// Get all pending userOps from the mempool. This will be in FIFO order. Downstream modules should sort it
 	// based on more specific strategies.

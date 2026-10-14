@@ -187,6 +187,14 @@ func testReputationApplyStatus(t *testing.T, st store.Store) {
 	if status != store.StatusOK {
 		t.Fatalf("fresh status = %v, want OK", status)
 	}
+	// Reads must not create state: a merely-checked entity stays absent.
+	dump, err := r.Dump(ctx)
+	if err != nil {
+		t.Fatalf("Dump after read: %v", err)
+	}
+	if len(dump) != 0 {
+		t.Fatalf("read created %d reputation entries, want 0", len(dump))
+	}
 
 	if err := r.Apply(ctx, store.ReputationDelta{Address: addr, OpsSeen: 1500}); err != nil {
 		t.Fatalf("Apply: %v", err)

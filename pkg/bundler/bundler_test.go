@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/internal/testutils"
@@ -13,6 +14,17 @@ import (
 	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
+
+// denyLocker simulates another replica holding every lock.
+type denyLocker struct{}
+
+func (denyLocker) Lock(context.Context, string, time.Duration) (store.Lock, error) {
+	return nil, nil
+}
+
+func (denyLocker) TryLock(context.Context, string, time.Duration) (store.Lock, bool, error) {
+	return nil, false, nil
+}
 
 func newTestBundler(t *testing.T) (*Bundler, store.MempoolStore, common.Address) {
 	t.Helper()
@@ -33,6 +45,34 @@ func TestBundler_Process_EmptyMempool(t *testing.T) {
 	}
 	if ctx != nil {
 		t.Fatalf("expected nil context for empty mempool, got %+v", ctx)
+	}
+}
+
+func TestBundler_Process_SkipsWhenLocked(t *testing.T) {
+	b, mem, ep := newTestBundler(t)
+	if err := mem.Add(context.Background(), ep, testutils.MockValidInitUserOp()); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	b.SetLocker(denyLocker{})
+
+	called := false
+	b.UseModules(func(ctx *modules.BatchHandlerCtx) error {
+		called = true
+		return nil
+	})
+
+	ctx, err := b.Process(ep)
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if ctx != nil {
+		t.Fatal("expected nil ctx when the bundle lock is held elsewhere")
+	}
+	if called {
+		t.Fatal("batch handler must not run without the lock")
+	}
+	if all, _ := mem.All(context.Background(), ep); len(all) != 1 {
+		t.Fatalf("mempool size = %d, want 1 (unchanged)", len(all))
 	}
 }
 

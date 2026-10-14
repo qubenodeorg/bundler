@@ -87,7 +87,8 @@ func (v *Values) StoreConfig() store.Config {
 	backend := store.Backend(strings.ToLower(strings.TrimSpace(v.StoreBackend)))
 	url := v.StoreURL
 	switch {
-	case backend == "" && url != "":
+	case backend == "" && (url != "" || len(v.StoreAddrs) > 0):
+		// A URL or a Sentinel/Cluster address list implies a network backend.
 		backend = store.BackendRedis
 	case backend == "":
 		backend = store.BackendBadger

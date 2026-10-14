@@ -61,6 +61,39 @@ func TestOpsCountDecay(t *testing.T) {
 	}
 }
 
+// TestOpsCountDecayPreservesFraction verifies only whole elapsed hours are
+// consumed, so sub-hour time is carried forward rather than discarded.
+func TestOpsCountDecayPreservesFraction(t *testing.T) {
+	base := time.Unix(1_700_000_000, 0)
+	c := OpsCount{Seen: 2400, UpdatedAt: base}
+
+	// 1h30m elapsed: exactly one whole hour is consumed.
+	d := c.Decayed(base.Add(90 * time.Minute))
+	if !d.UpdatedAt.Equal(base.Add(time.Hour)) {
+		t.Fatalf("UpdatedAt = %v, want %v", d.UpdatedAt, base.Add(time.Hour))
+	}
+
+	// The preserved 30m combines with the next 30m to consume one more hour.
+	d2 := d.Decayed(base.Add(2 * time.Hour))
+	if !d2.UpdatedAt.Equal(base.Add(2 * time.Hour)) {
+		t.Fatalf("UpdatedAt = %v, want %v", d2.UpdatedAt, base.Add(2*time.Hour))
+	}
+}
+
+// TestApplyDeltaKeepsDecayClock verifies ApplyDelta does not reset the decay
+// clock to now, so unused fractional time is not lost on every increment.
+func TestApplyDeltaKeepsDecayClock(t *testing.T) {
+	base := time.Unix(1_700_000_000, 0)
+	c := OpsCount{Seen: 100, UpdatedAt: base}
+	got := c.ApplyDelta(ReputationDelta{OpsSeen: 1}, base.Add(30*time.Minute))
+	if got.Seen != 101 {
+		t.Fatalf("Seen = %d, want 101", got.Seen)
+	}
+	if !got.UpdatedAt.Equal(base) {
+		t.Fatalf("UpdatedAt = %v, want unchanged %v", got.UpdatedAt, base)
+	}
+}
+
 func TestEncodeDecodeOpsCount(t *testing.T) {
 	at := time.Unix(1_700_000_000, 0)
 	c := OpsCount{Seen: 5, Included: 2, UpdatedAt: at}

@@ -91,10 +91,11 @@ func (m *mempoolStore) Clear(context.Context) error {
 
 type reputationStore struct{ s *Store }
 
+// getLocked returns the decayed counters without persisting them: reads must
+// not create or mutate entries, so an entity that is only checked keeps no
+// state and repeated reads do not reset the decay clock.
 func (r *reputationStore) getLocked(addr common.Address, now time.Time) store.OpsCount {
-	c := r.s.rep[addr].Decayed(now)
-	r.s.rep[addr] = c
-	return c
+	return r.s.rep[addr].Decayed(now)
 }
 
 func (r *reputationStore) Status(_ context.Context, entity common.Address, params store.ReputationParams) (store.ReputationStatus, error) {

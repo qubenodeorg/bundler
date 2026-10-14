@@ -80,25 +80,26 @@ leave op state behind forever and key growth stays bounded.
 
 ## Scaling model
 
-The store abstraction makes the bundler's state external, which is a
-prerequisite for running more than one replica. Two deployment topologies are
-supported:
+The store abstraction makes the bundler's state external, a prerequisite for
+running more than one replica. Today the supported topology is **one active
+bundler per store**:
 
-- **Single active bundler + read replicas.** The simplest correct model. Only
-  one process runs the batch loop; additional replicas serve read-only RPCs
-  (`eth_getUserOperationReceipt`, `eth_getUserOperationByHash`). No coordination
-  is required.
-- **Active/active.** Multiple processes share the mempool. Correctness requires
-  that two replicas never build overlapping bundles for the same
-  `(entryPoint, sender, nonce)`. The backend exposes a `Locker`
-  (`Store.Locker()`): Redis implements a TTL'd, token-checked distributed lock,
-  and single-node backends return a no-op locker so callers can depend on the
-  interface unconditionally.
+- Both startup modes, `private` and `searcher`, run the batch loop. There is
+  **no read-only replica mode**, so a second instance started against the same
+  store will also try to build and submit bundles.
+- To keep a rolling-deploy overlap (or any accidental multi-instance setup)
+  from double-bundling, `Bundler.Process` takes a distributed per-EntryPoint
+  lock for the duration of a round (via `Store.Locker()`) and skips the round
+  when another replica holds it. Redis implements a TTL'd, token-checked lock;
+  single-node backends return a no-op locker.
+- Beyond that overlap protection, **do not run multiple active instances
+  against one store**: explicit per-op claims with lease expiry and
+  crash-reclaim are not implemented yet, so ops in an in-flight batch are not
+  protected from a second bundler. Use exactly one active instance per store
+  (roadmap section 1.4 covers the remaining coordination work).
 
-> **Status:** the lock manager and op TTL are in place. Wiring per-sender bundle
-> locks, op leases, and leader election into the batch loop is the next step
-> (roadmap section 1.4); until then, use the single-active-bundler topology for
-> a shared store.
+For a single-chain, single-instance deployment the default BadgerDB backend
+needs no coordination at all.
 
 ## Readiness
 

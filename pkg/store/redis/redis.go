@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	goredis "github.com/redis/go-redis/v9"
@@ -215,7 +216,9 @@ func (s *Store) reputationKey(addr common.Address) string {
 	return s.cfg.Key("reputation") + ":{" + s.reputationTag() + "}:" + addr.String()
 }
 
-func (s *Store) reputationPattern() string { return s.cfg.Key("reputation") + ":*" }
+func (s *Store) reputationPattern() string {
+	return s.cfg.Key("reputation") + ":{" + s.reputationTag() + "}:*"
+}
 
 func (s *Store) codeHashKey(h common.Hash) string {
 	return s.cfg.Key("checks", "codeHashes", h.String())
@@ -386,7 +389,7 @@ func (m *mempoolStore) Clear(ctx context.Context) error {
 
 // --- reputation ------------------------------------------------------------
 
-var repOpsScript = goredis.NewScript(`
+var repApplyScript = goredis.NewScript(`
 local now = tonumber(ARGV[1])
 local out = {}
 for i = 1, #KEYS do
@@ -403,7 +406,9 @@ for i = 1, #KEYS do
   included = included + tonumber(ARGV[2 * i + 1])
   if seen < 0 then seen = 0 end
   if included < 0 then included = 0 end
-  redis.call('HSET', KEYS[i], 'opsSeen', seen, 'opsIncluded', included, 'updatedAt', now)
+  -- Advance updatedAt by the whole hours consumed so fractional time is kept
+  -- for the next decay instead of being discarded.
+  redis.call('HSET', KEYS[i], 'opsSeen', seen, 'opsIncluded', included, 'updatedAt', updated + hours * 3600)
   out[#out + 1] = seen
   out[#out + 1] = included
 end
@@ -412,13 +417,22 @@ return out
 
 type reputationStore struct{ s *Store }
 
+// decount reads and decays counters without writing: a lookup must not create
+// keys or reset the decay clock.
 func (r *reputationStore) decount(ctx context.Context, entity common.Address) (int, int, error) {
-	res, err := repOpsScript.Run(ctx, r.s.rdb, []string{r.s.reputationKey(entity)},
-		time.Now().Unix(), 0, 0).Slice()
+	vals, err := r.s.rdb.HGetAll(ctx, r.s.reputationKey(entity)).Result()
 	if err != nil {
 		return 0, 0, fmt.Errorf("%w: %v", store.ErrUnavailable, err)
 	}
-	return intFromLua(res, 0), intFromLua(res, 1), nil
+	if len(vals) == 0 {
+		return 0, 0, nil
+	}
+	seen, _ := strconv.Atoi(vals["opsSeen"])
+	included, _ := strconv.Atoi(vals["opsIncluded"])
+	updated, _ := strconv.ParseInt(vals["updatedAt"], 10, 64)
+	c := store.OpsCount{Seen: seen, Included: included, UpdatedAt: time.Unix(updated, 0)}
+	d := c.Decayed(time.Now())
+	return d.Seen, d.Included, nil
 }
 
 func (r *reputationStore) Status(ctx context.Context, entity common.Address, params store.ReputationParams) (store.ReputationStatus, error) {
@@ -444,7 +458,7 @@ func (r *reputationStore) Apply(ctx context.Context, deltas ...store.ReputationD
 		keys = append(keys, r.s.reputationKey(d.Address))
 		args = append(args, d.OpsSeen, d.OpsIncluded)
 	}
-	if err := repOpsScript.Run(ctx, r.s.rdb, keys, args...).Err(); err != nil {
+	if err := repApplyScript.Run(ctx, r.s.rdb, keys, args...).Err(); err != nil {
 		return fmt.Errorf("%w: %v", store.ErrUnavailable, err)
 	}
 	return nil
@@ -547,6 +561,29 @@ func (c *codeHashStore) Clear(ctx context.Context) error {
 // --- shared helpers --------------------------------------------------------
 
 func (s *Store) scanKeys(ctx context.Context, pattern string) ([]string, error) {
+	// In Cluster mode a single SCAN only reaches one node; walk every master
+	// with its own cursor so Clear/Dump see all keys.
+	if cluster, ok := s.rdb.(*goredis.ClusterClient); ok {
+		var (
+			mu   sync.Mutex
+			keys []string
+		)
+		err := cluster.ForEachMaster(ctx, func(ctx context.Context, client *goredis.Client) error {
+			iter := client.Scan(ctx, 0, pattern, 100).Iterator()
+			for iter.Next(ctx) {
+				k := iter.Val()
+				mu.Lock()
+				keys = append(keys, k)
+				mu.Unlock()
+			}
+			return iter.Err()
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", store.ErrUnavailable, err)
+		}
+		return keys, nil
+	}
+
 	var keys []string
 	iter := s.rdb.Scan(ctx, 0, pattern, 100).Iterator()
 	for iter.Next(ctx) {
@@ -596,14 +633,4 @@ func toAny(ss []string) []any {
 		out[i] = s
 	}
 	return out
-}
-
-func intFromLua(res []any, i int) int {
-	if i >= len(res) {
-		return 0
-	}
-	if v, ok := res[i].(int64); ok {
-		return int(v)
-	}
-	return 0
 }

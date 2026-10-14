@@ -80,27 +80,34 @@ type OpsCount struct {
 	UpdatedAt time.Time
 }
 
-// Decayed applies EIP-4337 exponential decay to the counters and stamps the
-// result as updated now. A single hourly step reduces each counter by
-// count/EMAHours until both are below the decay floor (24).
+// Decayed applies EIP-4337 exponential decay to the counters. A single hourly
+// step reduces each counter by count/EMAHours until both are below the decay
+// floor (24). Only the whole hours actually elapsed are consumed: UpdatedAt is
+// advanced by hours*time.Hour so any fractional remainder is preserved for the
+// next decay, instead of being discarded by resetting to now.
 func (c OpsCount) Decayed(now time.Time) OpsCount {
 	if c.UpdatedAt.IsZero() {
 		c.UpdatedAt = now
 		return c
 	}
 	hours := int(now.Sub(c.UpdatedAt).Hours())
+	if hours <= 0 {
+		return c
+	}
 	for i := hours; i > 0; i-- {
-		if c.Seen < 24 && c.Included < 24 {
+		if c.Seen < ReputationEMAHours && c.Included < ReputationEMAHours {
 			break
 		}
 		c.Seen -= c.Seen / ReputationEMAHours
 		c.Included -= c.Included / ReputationEMAHours
 	}
-	c.UpdatedAt = now
+	c.UpdatedAt = c.UpdatedAt.Add(time.Duration(hours) * time.Hour)
 	return c
 }
 
-// ApplyDelta decays then adds the signed delta, clamping seen to >= 0.
+// ApplyDelta decays then adds the signed delta, clamping seen to >= 0. It does
+// not reset UpdatedAt to now: Decayed already advanced it by the consumed whole
+// hours, so the fractional remainder is carried forward.
 func (c OpsCount) ApplyDelta(d ReputationDelta, now time.Time) OpsCount {
 	c = c.Decayed(now)
 	c.Seen += d.OpsSeen
@@ -111,7 +118,6 @@ func (c OpsCount) ApplyDelta(d ReputationDelta, now time.Time) OpsCount {
 	if c.Included < 0 {
 		c.Included = 0
 	}
-	c.UpdatedAt = now
 	return c
 }
 
