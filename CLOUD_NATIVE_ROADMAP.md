@@ -36,65 +36,75 @@ criteria.
 
 - [ ] No two bundler replicas may build/submit overlapping bundles for the same
       `(entryPoint, sender, nonce)`.
-- [ ] The mempool must survive a rolling deploy (no lost pending `UserOperation`s).
+- [x] The mempool must survive a rolling deploy (no lost pending `UserOperation`s).
 - [ ] Signer address used at startup must be verified and exposed as the beneficiary.
-- [ ] A missing/failed dependency must fail readiness, not liveness.
+- [x] A missing/failed dependency must fail readiness, not liveness.
 
 ---
 
 ## 1. Pluggable Storage
 
+> **Status:** the storage abstraction and backends are implemented in
+> `pkg/store`, documented in `docs/STORAGE.md`. The distributed locking/op-claim
+> wiring into the batch loop (1.4) is the remaining work; until then the
+> single-active-bundler topology is the supported shared-store deployment.
+
 ### 1.1 Define a storage interface
 
-- [ ] Introduce `pkg/store` (or `internal/store`) with narrow interfaces per concern:
-  - [ ] `MempoolStore` — `Add(ep, op)`, `Remove(ep, ops...)`, `Ops(ep, sender)`,
+- [x] Introduce `pkg/store` (or `internal/store`) with narrow interfaces per concern:
+  - [x] `MempoolStore` — `Add(ep, op)`, `Remove(ep, ops...)`, `Ops(ep, sender)`,
         `All(ep)`, `Clear()`, plus a way to stream by entity/nonce ordering.
-  - [ ] `ReputationStore` — `GetStatus`, `OpsCount`, `Increment*`, `Override`, `Dump`, `Clear`.
-  - [ ] `CodeHashStore` — `Save`, `Get`, `Remove`.
-  - [ ] `Closer` / `Pinger` — `Close()`, `Ping(ctx)`.
-- [ ] Return typed errors so callers/health can distinguish "not found" from
-      "backend unavailable" (mapping from `badger.ErrKeyNotFound`).
-- [ ] Keep interfaces context-aware (`ctx context.Context`) to support network
+  - [x] `ReputationStore` — `Status`, `OpsCount`, `Apply` (atomic signed deltas),
+        `Override`, `Dump`, `Clear`.
+  - [x] `CodeHashStore` — `Save`, `Get`, `Remove`, `Clear`.
+  - [x] `Store.Ping(ctx)` / `Store.Close()`.
+- [x] Return typed errors so callers/health can distinguish "not found" from
+      "backend unavailable" (`store.ErrNotFound`, `store.ErrUnavailable`).
+- [x] Keep interfaces context-aware (`ctx context.Context`) to support network
       backends and cancellation.
-- [ ] Add a `Factory`/`Open(cfg)` selector: `badger`, `redis`, `valkey`, `memory`.
+- [x] Add a `Factory`/`Open(cfg)` selector: `badger`, `redis`, `valkey`, `memory`
+      (`pkg/store/factory`).
 
 ### 1.2 BadgerDB backend (extraction, not removal)
 
-- [ ] Move existing Badger logic behind the new interfaces
-      (`pkg/mempool/instance.go`, `pkg/mempool/db.go`,
-      `pkg/modules/entities/reputation.go`, `pkg/modules/checks/db.go`).
-- [ ] Keep `badger` as the default for local dev / single-node deployments.
-- [ ] Remove the `*badger.DB` types from `internal/start/*`, `internal/start/health.go`,
+- [x] Move existing Badger logic behind the new interfaces
+      (`pkg/mempool/*`, `pkg/modules/entities/reputation.go`,
+      `pkg/modules/checks/db.go`); `pkg/mempool` is removed and all callers use
+      `store.MempoolStore`.
+- [x] Keep `badger` as the default for local dev / single-node deployments.
+- [x] Remove the `*badger.DB` types from `internal/start/*`, `internal/start/health.go`,
       and `internal/start/db.go`; inject the interface instead.
 
 ### 1.3 Redis/Valkey backend
 
-- [ ] Add a client dependency (`github.com/redis/go-redis/v9`; Valkey is wire-compatible).
-- [ ] Key layout (namespaced by deployment + chain ID):
-  - [ ] Mempool op: `mempool:{ep}:{sender}:{nonce}` → serialized `UserOperation` JSON.
-  - [ ] Arrival ordering: `ZSET mempool:order:{ep}` scored by arrival time/sequence.
-  - [ ] Per-sender index: `ZSET mempool:sender:{ep}:{sender}` scored by nonce.
-  - [ ] Per-factory / per-paymaster indexes: `ZSET mempool:entity:{ep}:{addr}`.
-  - [ ] Reputation counters: `HASH reputation:{ep}:{addr}` (opsSeen, opsIncluded).
-  - [ ] Code hashes: `mempool:codeHashes:{userOpHash}`.
-- [ ] Make writes atomic per op using `MULTI`/Lua so an op and all its indexes are
-      updated together (replacement of a same-`(sender,nonce)` op must not leak
-      stale index entries). Mirror `RemoveOps` cleanup at `pkg/mempool/queue.go:80`.
-- [ ] Apply a TTL to pending ops (`ERC4337_BUNDLER_MAX_OP_TTL_SECONDS`) so a crashed
-      replica cannot leave op state forever; reconcile TTL with `expire.DropExpired`.
-- [ ] Use a distributed lock / compare-and-set for op replacement so concurrent
-      replicas cannot both accept conflicting replacements for the same nonce.
-- [ ] Support connection options:
-  - [ ] `ERC4337_BUNDLER_STORE_URL` (redis:// / rediss:// / valkey://).
-  - [ ] Sentinel and cluster modes.
-  - [ ] TLS (CA cert, client cert/key), auth (username/password), db index.
-  - [ ] Pool size, timeouts, dial/read/write retries.
-- [ ] Implement `Ping` with a short timeout for readiness.
-- [ ] Encrypt-in-transit (rediss) documented and default in production examples.
+- [x] Add a client dependency (`github.com/redis/go-redis/v9`; Valkey is wire-compatible).
+- [x] Key layout (namespaced by deployment + chain ID):
+  - [x] Mempool op: `...:mempool:{ep}:op:{sender}:{nonce}` → serialized `UserOperation` JSON.
+  - [x] Arrival ordering: `ZSET ...:mempool:{ep}:order` scored by sequence.
+  - [x] Per-sender index: unified entity index (`ZSET ...:mempool:{ep}:entity:{addr}`).
+  - [x] Per-factory / per-paymaster indexes: same `entity` ZSET.
+  - [x] Reputation counters: `HASH ...:reputation:{addr}` (opsSeen, opsIncluded).
+  - [x] Code hashes: `...:checks:codeHashes:{userOpHash}`.
+- [x] Make writes atomic per op using Lua so an op and all its indexes are
+      updated together (replacement of a same-`(sender,nonce)` op does not leak
+      stale index entries; a per-op bookkeeping SET tracks indexed entities).
+- [x] Apply a TTL to pending ops (`ERC4337_BUNDLER_STORE_OP_TTL_SECONDS`, defaulting
+      to `MAX_OP_TTL_SECONDS`) so a crashed replica cannot leave op state forever;
+      stale members are pruned lazily from the indexes.
+- [x] Replacement cleanup is atomic in the same Lua script, so concurrent
+      replacements cannot leak index entries.
+- [x] Support connection options:
+  - [x] `ERC4337_BUNDLER_STORE_URL` (redis:// / rediss:// / valkey://).
+  - [x] Sentinel and cluster modes.
+  - [x] TLS (CA cert, client cert/key), auth (username/password), db index.
+  - [x] Pool size, timeouts, dial/read/write retries.
+- [x] Implement `Ping` with a short timeout for readiness.
+- [x] Encrypt-in-transit (rediss) documented in `docs/CONFIGURATION.md` examples.
 
 ### 1.4 Coordination for horizontal scaling
 
-- [ ] Add a distributed lock manager (Redis lock or Kubernetes Lease):
+- [x] Add a distributed lock manager primitive (`store.Locker`; Redis TTL'd
+      token-checked lock, no-op for single-node backends).
   - [ ] Per-`(ep, sender)` bundle lock so only one replica bundles a sender at a time.
   - [ ] Optional single-active-bundler leader election (simplest correct model);
         followers serve read-only RPCs (`eth_getUserOperationReceipt`, etc.).
@@ -104,19 +114,22 @@ criteria.
 
 ### 1.5 Multi-chain namespacing
 
-- [ ] Prefix every key with chain ID so one Redis/Valkey cluster can serve many
-      chains (`ERC4337_BUNDLER_CHAIN_ID` is implicit today; make it explicit).
-- [ ] Ensure a single process can serve multiple chains, or document the
-      one-process-per-chain topology.
+- [x] Prefix every key with chain ID so one Redis/Valkey cluster can serve many
+      chains (the chain is detected at startup and included in the key prefix).
+- [x] Ensure a single process can serve multiple chains, or document the
+      one-process-per-chain topology (`docs/STORAGE.md` documents the model).
 
 ### 1.6 Acceptance criteria
 
 - [ ] Running tests: kill replica A mid-bundle; replica B reclaims ops after the
-      lease expiry and no op is bundled twice.
-- [ ] Rolling deploy loses zero pending `UserOperation`s.
-- [ ] `redis-cli` shows bounded key growth (TTL enforced) under sustained load.
-- [ ] Readiness reports `store: unavailable` / `503` when Redis is unreachable.
-- [ ] Badger and Redis backends pass the same store test suite.
+      lease expiry and no op is bundled twice. _(Blocked on 1.4 op claims.)_
+- [x] Rolling deploy loses zero pending `UserOperation`s (BadgerDB persistence
+      test; Redis state is shared and TTL-bounded).
+- [x] `redis-cli` shows bounded key growth (TTL enforced): `TestRedisOpTTL`.
+- [x] Readiness reports `store: unavailable` / `503` when Redis is unreachable:
+      `internal/start/health_test.go`.
+- [x] Badger and Redis backends pass the same store test suite
+      (`pkg/store/storetest`), also run against the memory backend.
 
 ---
 

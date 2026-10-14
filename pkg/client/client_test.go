@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"math/big"
 	"strings"
 	"testing"
@@ -15,8 +16,8 @@ import (
 	"github.com/zarbanio/bundler/pkg/fees"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/handlers"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -27,14 +28,9 @@ const (
 	v09EP = "0x433709009B8330FDa32311DF1C2AFA402eD8D009"
 )
 
-func newTestClient(t *testing.T, eps ...common.Address) (*Client, *mempool.Mempool) {
+func newTestClient(t *testing.T, eps ...common.Address) (*Client, store.MempoolStore) {
 	t.Helper()
-	db := testutils.DBMock()
-	t.Cleanup(func() { _ = db.Close() })
-	mem, err := mempool.New(db)
-	if err != nil {
-		t.Fatalf("mempool.New: %v", err)
-	}
+	mem := testutils.MemoryStore().Mempool()
 
 	if len(eps) == 0 {
 		eps = []common.Address{common.HexToAddress(v06EP)}
@@ -162,7 +158,7 @@ func TestClient_SendUserOperation_V06(t *testing.T) {
 		t.Fatalf("hash not in hex: %s", hash)
 	}
 
-	ops, err := mem.Dump(common.HexToAddress(v06EP))
+	ops, err := mem.All(context.Background(), common.HexToAddress(v06EP))
 	if err != nil {
 		t.Fatalf("Dump: %v", err)
 	}

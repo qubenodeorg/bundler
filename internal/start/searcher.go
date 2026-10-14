@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 
-	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -20,7 +19,6 @@ import (
 	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/jsonrpc"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules/batch"
 	"github.com/zarbanio/bundler/pkg/modules/builder"
 	"github.com/zarbanio/bundler/pkg/modules/checks"
@@ -28,6 +26,8 @@ import (
 	"github.com/zarbanio/bundler/pkg/modules/expire"
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/store"
+	"github.com/zarbanio/bundler/pkg/store/factory"
 	"github.com/zarbanio/bundler/pkg/tracer"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
@@ -52,13 +52,6 @@ func SearcherMode() {
 	}
 	beneficiary := common.HexToAddress(conf.Beneficiary)
 
-	db, err := badger.Open(badger.DefaultOptions(conf.DataDirectory))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	runDBGarbageCollection(db)
-
 	rpc, err := rpc.Dial(conf.EthClientUrl)
 	if err != nil {
 		log.Fatal(err)
@@ -72,6 +65,20 @@ func SearcherMode() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	storeCfg := conf.StoreConfig()
+	if storeCfg.Backend == store.BackendRedis || storeCfg.Backend == store.BackendValkey {
+		storeCfg.ChainID = chain
+	}
+	st, err := factory.Open(context.Background(), storeCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	logr.Info("storage backend initialized",
+		"backend", string(storeCfg.Backend),
+		"namespace", storeCfg.KeyPrefix(),
+	)
 	if !builder.CompatibleChainIDs.Contains(chain.Uint64()) {
 		log.Fatalf(
 			"error: network with chainID %d is not compatible with the Block Builder API.",
@@ -101,10 +108,7 @@ func SearcherMode() {
 	// instance can serve all of them with version-correct PVG math.
 	ovr := gas.NewOverheadResolver(conf.EntryPointVersions...)
 
-	mem, err := mempool.New(db)
-	if err != nil {
-		log.Fatal(err)
-	}
+	mem := st.Mempool()
 
 	alt, err := altmempools.NewFromIPFS(chain, conf.AltMempoolIPFSGateway, conf.AltMempoolIds)
 	if err != nil {
@@ -112,7 +116,7 @@ func SearcherMode() {
 	}
 
 	check := checks.New(
-		db,
+		st.CodeHash(),
 		rpc,
 		ovr,
 		alt,
@@ -128,7 +132,7 @@ func SearcherMode() {
 	// TODO: Create separate go-routine for tracking transactions sent to the block builder.
 	builder := builder.New(eoa, eth, fb, beneficiary, conf.BlocksInTheFuture)
 
-	rep := entities.New(db, eth, conf.ReputationConstants)
+	rep := entities.New(st.Reputation(), eth, conf.ReputationConstants)
 
 	// Init Client
 	c := client.New(
@@ -170,6 +174,7 @@ func SearcherMode() {
 	b.SetGetBaseFeeFunc(gasprice.GetBaseFeeWithEthClient(eth))
 	b.SetGetGasTipFunc(gasprice.GetGasTipWithEthClient(eth))
 	b.SetGetLegacyGasPriceFunc(gasprice.GetLegacyGasPriceWithEthClient(eth))
+	b.SetLocker(st.Locker())
 	b.UseLogger(logr)
 	if err := b.UserMeter(otel.GetMeterProvider().Meter("bundler")); err != nil {
 		log.Fatal(err)
@@ -218,7 +223,7 @@ func SearcherMode() {
 	)
 	r.GET("/ping", livenessHandler())
 	r.GET("/live", livenessHandler())
-	r.GET("/ready", readinessHandler(eth, db, logr))
+	r.GET("/ready", readinessHandler(eth, st, logr))
 	handlers := []gin.HandlerFunc{
 		jsonrpc.Controller(client.NewRpcAdapter(c, d, rpc)),
 		jsonrpc.WithOTELTracerAttributes(),

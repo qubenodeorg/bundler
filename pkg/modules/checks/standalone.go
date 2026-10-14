@@ -3,10 +3,10 @@
 package checks
 
 import (
+	"context"
 	"math/big"
 	"time"
 
-	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -22,6 +22,7 @@ import (
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/tracer"
 
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
@@ -33,7 +34,7 @@ import (
 // intended for bundlers that are independent of an Ethereum node and hence relies on a given ethClient to
 // query blockchain state.
 type Standalone struct {
-	db                 *badger.DB
+	codeHashes         store.CodeHashStore
 	rpc                *rpc.Client
 	eth                *ethclient.Client
 	ovr                *gas.OverheadResolver
@@ -48,7 +49,7 @@ type Standalone struct {
 // New returns a Standalone instance with methods that can be used in Client and Bundler modules to perform
 // standard checks as specified in EIP-4337.
 func New(
-	db *badger.DB,
+	codeHashes store.CodeHashStore,
 	rpc *rpc.Client,
 	ovr *gas.OverheadResolver,
 	alt *altmempools.Directory,
@@ -60,7 +61,7 @@ func New(
 ) *Standalone {
 	eth := ethclient.NewClient(rpc)
 	return &Standalone{
-		db,
+		codeHashes,
 		rpc,
 		eth,
 		ovr,
@@ -265,8 +266,10 @@ func (s *Standalone) CodeHashes() modules.BatchHandlerFunc {
 		end := len(ctx.Batch) - 1
 		for i := end; i >= 0; i-- {
 			op := ctx.Batch[i]
-			chs, err := getSavedCodeHashes(s.db, op.GetUserOpHash(ctx.EntryPoint, ctx.ChainID))
-			if err != nil {
+			chs, err := s.codeHashes.Get(context.Background(), op.GetUserOpHash(ctx.EntryPoint, ctx.ChainID))
+			if err != nil && !store.IsNotFound(err) {
+				// No saved snapshot means there is nothing to re-verify; only a
+				// real backend failure should abort the batch.
 				return err
 			}
 
@@ -468,6 +471,6 @@ func (s *Standalone) Clean() modules.BatchHandlerFunc {
 			hashes = append(hashes, op.GetUserOpHash(ctx.EntryPoint, ctx.ChainID))
 		}
 
-		return removeSavedCodeHashes(s.db, hashes...)
+		return s.codeHashes.Remove(context.Background(), hashes...)
 	}
 }

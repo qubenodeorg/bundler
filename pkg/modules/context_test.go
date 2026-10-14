@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"context"
 	"math/big"
 	"testing"
 
@@ -8,14 +9,11 @@ import (
 	"github.com/zarbanio/bundler/internal/testutils"
 	"github.com/zarbanio/bundler/pkg/entrypoint"
 	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 func TestNoPendingOps(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
 	op.PaymasterAndData = []byte{}
@@ -39,23 +37,21 @@ func TestNoPendingOps(t *testing.T) {
 }
 
 func TestGetPendingSenderOps(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
 	op.PaymasterAndData = []byte{}
 
 	penOp1 := testutils.MockValidInitUserOp()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp1)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp1)
 
 	penOp2 := testutils.MockValidInitUserOp()
 	penOp2.Nonce = big.NewInt(0).Add(penOp1.Nonce, common.Big1)
-	_ = mem.AddOp(testutils.ValidAddress5, penOp2)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp2)
 
 	penOp3 := testutils.MockValidInitUserOp()
 	penOp3.Nonce = big.NewInt(0).Add(penOp2.Nonce, common.Big1)
-	_ = mem.AddOp(testutils.ValidAddress5, penOp3)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp3)
 
 	ctx, err := NewUserOpHandlerContext(
 		op,
@@ -82,9 +78,7 @@ func TestGetPendingSenderOps(t *testing.T) {
 }
 
 func TestGetPendingFactoryOps(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = testutils.ValidAddress4.Bytes()
 	op.PaymasterAndData = []byte{}
@@ -92,17 +86,17 @@ func TestGetPendingFactoryOps(t *testing.T) {
 	penOp1 := testutils.MockValidInitUserOp()
 	penOp1.Sender = testutils.ValidAddress1
 	penOp1.InitCode = testutils.ValidAddress4.Bytes()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp1)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp1)
 
 	penOp2 := testutils.MockValidInitUserOp()
 	penOp2.Sender = testutils.ValidAddress2
 	penOp2.InitCode = testutils.ValidAddress4.Bytes()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp2)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp2)
 
 	penOp3 := testutils.MockValidInitUserOp()
 	penOp3.Sender = testutils.ValidAddress3
 	penOp3.InitCode = testutils.ValidAddress4.Bytes()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp3)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp3)
 
 	ctx, err := NewUserOpHandlerContext(
 		op,
@@ -129,9 +123,7 @@ func TestGetPendingFactoryOps(t *testing.T) {
 }
 
 func TestGetPendingPaymasterOps(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
 	op.PaymasterAndData = testutils.ValidAddress4.Bytes()
@@ -139,17 +131,17 @@ func TestGetPendingPaymasterOps(t *testing.T) {
 	penOp1 := testutils.MockValidInitUserOp()
 	penOp1.Sender = testutils.ValidAddress1
 	penOp1.PaymasterAndData = testutils.ValidAddress4.Bytes()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp1)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp1)
 
 	penOp2 := testutils.MockValidInitUserOp()
 	penOp2.Sender = testutils.ValidAddress2
 	penOp2.PaymasterAndData = testutils.ValidAddress4.Bytes()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp2)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp2)
 
 	penOp3 := testutils.MockValidInitUserOp()
 	penOp3.Sender = testutils.ValidAddress3
 	penOp3.PaymasterAndData = testutils.ValidAddress4.Bytes()
-	_ = mem.AddOp(testutils.ValidAddress5, penOp3)
+	_ = mem.Add(context.Background(), testutils.ValidAddress5, penOp3)
 
 	ctx, err := NewUserOpHandlerContext(
 		op,
@@ -176,9 +168,7 @@ func TestGetPendingPaymasterOps(t *testing.T) {
 }
 
 func TestNilDepositInfo(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
 	op.PaymasterAndData = []byte{}
@@ -205,9 +195,7 @@ func TestNilDepositInfo(t *testing.T) {
 }
 
 func TestGetSenderDepositInfo(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
 	op.PaymasterAndData = []byte{}
@@ -232,9 +220,7 @@ func TestGetSenderDepositInfo(t *testing.T) {
 }
 
 func TestGetFactoryDepositInfo(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = testutils.ValidAddress1.Bytes()
 	op.PaymasterAndData = []byte{}
@@ -259,9 +245,7 @@ func TestGetFactoryDepositInfo(t *testing.T) {
 }
 
 func TestGetPaymasterDepositInfo(t *testing.T) {
-	db := testutils.DBMock()
-	defer func() { _ = db.Close() }()
-	mem, _ := mempool.New(db)
+	mem := testutils.MemoryStore().Mempool()
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
 	op.PaymasterAndData = testutils.ValidAddress1.Bytes()

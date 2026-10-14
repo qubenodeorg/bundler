@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -10,9 +11,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/zarbanio/bundler/pkg/bundler"
 	"github.com/zarbanio/bundler/pkg/entrypoint"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -20,7 +21,7 @@ import (
 type Debug struct {
 	eoa         *signer.EOA
 	eth         *ethclient.Client
-	mempool     *mempool.Mempool
+	mempool     store.MempoolStore
 	rep         *entities.Reputation
 	bundler     *bundler.Bundler
 	chainID     *big.Int
@@ -31,7 +32,7 @@ type Debug struct {
 func NewDebug(
 	eoa *signer.EOA,
 	eth *ethclient.Client,
-	mempool *mempool.Mempool,
+	mempool store.MempoolStore,
 	rep *entities.Reputation,
 	bundler *bundler.Bundler,
 	chainID *big.Int,
@@ -43,7 +44,7 @@ func NewDebug(
 
 // ClearState clears the bundler mempool and reputation data of paymasters/accounts/factories/aggregators.
 func (d *Debug) ClearState() (string, error) {
-	if err := d.mempool.Clear(); err != nil {
+	if err := d.mempool.Clear(context.Background()); err != nil {
 		return "", err
 	}
 	if err := d.rep.Clear(); err != nil {
@@ -58,7 +59,7 @@ func (d *Debug) ClearState() (string, error) {
 // are converted back to the versioned wire format (factory/paymaster groups).
 func (d *Debug) DumpMempool(ep string) ([]map[string]any, error) {
 	epAddr := common.HexToAddress(ep)
-	ops, err := d.mempool.Dump(epAddr)
+	ops, err := d.mempool.All(context.Background(), epAddr)
 	if err != nil {
 		return []map[string]any{}, err
 	}

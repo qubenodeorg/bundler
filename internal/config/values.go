@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -58,9 +59,67 @@ type Values struct {
 	// one gas Overhead per entry so a single instance serves all of them.
 	EntryPointVersions []userop.Version
 
+	// Storage backend configuration.
+	StoreBackend    string
+	StoreURL        string
+	StoreNamespace  string
+	StoreUsername   string
+	StorePassword   string
+	StoreDB         int
+	StorePoolSize   int
+	StoreAddrs      []string
+	StoreMasterName string
+	StoreOpTTL      time.Duration
+	// StoreOpTTLExplicit records whether the operator set the TTL, so an
+	// explicit 0 can disable it while an unset value falls back to MaxOpTTL for
+	// shared backends.
+	StoreOpTTLExplicit bool
+
 	// Undocumented variables.
 	DebugMode bool
 	GinMode   string
+}
+
+// StoreConfig builds the transport-agnostic store configuration. When the
+// backend is left empty it is inferred: a store URL implies Redis/Valkey,
+// otherwise BadgerDB is used for backward compatibility.
+func (v *Values) StoreConfig() store.Config {
+	backend := store.Backend(strings.ToLower(strings.TrimSpace(v.StoreBackend)))
+	url := v.StoreURL
+	switch {
+	case backend == "" && (url != "" || len(v.StoreAddrs) > 0):
+		// A URL or a Sentinel/Cluster address list implies a network backend.
+		backend = store.BackendRedis
+	case backend == "":
+		backend = store.BackendBadger
+	}
+	// Normalize the valkey:// scheme to what go-redis understands.
+	if strings.HasPrefix(url, "valkey://") {
+		url = "redis://" + strings.TrimPrefix(url, "valkey://")
+		backend = store.BackendValkey
+	}
+
+	opTTL := v.StoreOpTTL
+	if !v.StoreOpTTLExplicit && (backend == store.BackendRedis || backend == store.BackendValkey) {
+		// Default the shared-store pending-op TTL to the in-process op TTL so a
+		// crashed replica cannot leave state behind forever. An explicit value
+		// (including 0, to disable) is honored as-is.
+		opTTL = v.MaxOpTTL
+	}
+
+	return store.Config{
+		Backend:       backend,
+		Namespace:     v.StoreNamespace,
+		DataDirectory: v.DataDirectory,
+		URL:           url,
+		Addrs:         v.StoreAddrs,
+		MasterName:    v.StoreMasterName,
+		Username:      v.StoreUsername,
+		Password:      v.StorePassword,
+		DB:            v.StoreDB,
+		PoolSize:      v.StorePoolSize,
+		OpTTL:         opTTL,
+	}
 }
 
 func envKeyValStringToMap(s string) map[string]string {
@@ -149,6 +208,16 @@ func GetValues() *Values {
 	viper.SetDefault("erc4337_bundler_debug_mode", false)
 	viper.SetDefault("erc4337_bundler_gin_mode", gin.ReleaseMode)
 
+	// Storage backend defaults. An empty backend is inferred from the store URL
+	// (Redis/Valkey) or falls back to BadgerDB.
+	viper.SetDefault("erc4337_bundler_store_backend", "")
+	viper.SetDefault("erc4337_bundler_store_namespace", "")
+	viper.SetDefault("erc4337_bundler_store_db", 0)
+	viper.SetDefault("erc4337_bundler_store_pool_size", 0)
+	// No default for store_op_ttl_seconds: the shared-store TTL defaults to
+	// MAX_OP_TTL_SECONDS unless the operator sets this explicitly, in which case
+	// an explicit 0 disables it.
+
 	// Read in from .env file if available
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
@@ -189,6 +258,16 @@ func GetValues() *Values {
 	_ = viper.BindEnv("erc4337_bundler_entrypoint_version")
 	_ = viper.BindEnv("erc4337_bundler_debug_mode")
 	_ = viper.BindEnv("erc4337_bundler_gin_mode")
+	_ = viper.BindEnv("erc4337_bundler_store_backend")
+	_ = viper.BindEnv("erc4337_bundler_store_url")
+	_ = viper.BindEnv("erc4337_bundler_store_namespace")
+	_ = viper.BindEnv("erc4337_bundler_store_username")
+	_ = viper.BindEnv("erc4337_bundler_store_password")
+	_ = viper.BindEnv("erc4337_bundler_store_db")
+	_ = viper.BindEnv("erc4337_bundler_store_pool_size")
+	_ = viper.BindEnv("erc4337_bundler_store_addrs")
+	_ = viper.BindEnv("erc4337_bundler_store_master_name")
+	_ = viper.BindEnv("erc4337_bundler_store_op_ttl_seconds")
 
 	// Validate required variables
 	if variableNotSetOrIsNil("erc4337_bundler_eth_client_url") {
@@ -252,6 +331,17 @@ func GetValues() *Values {
 	isRIP7212Supported := viper.GetBool("erc4337_bundler_is_rip7212_supported")
 	debugMode := viper.GetBool("erc4337_bundler_debug_mode")
 	ginMode := viper.GetString("erc4337_bundler_gin_mode")
+	storeBackend := viper.GetString("erc4337_bundler_store_backend")
+	storeURL := viper.GetString("erc4337_bundler_store_url")
+	storeNamespace := viper.GetString("erc4337_bundler_store_namespace")
+	storeUsername := viper.GetString("erc4337_bundler_store_username")
+	storePassword := viper.GetString("erc4337_bundler_store_password")
+	storeDB := viper.GetInt("erc4337_bundler_store_db")
+	storePoolSize := viper.GetInt("erc4337_bundler_store_pool_size")
+	storeAddrs := envArrayToStringSlice(viper.GetString("erc4337_bundler_store_addrs"))
+	storeMasterName := viper.GetString("erc4337_bundler_store_master_name")
+	storeOpTTL := time.Second * viper.GetDuration("erc4337_bundler_store_op_ttl_seconds")
+	storeOpTTLSet := viper.IsSet("erc4337_bundler_store_op_ttl_seconds")
 
 	entryPointVersionStr := strings.ToLower(strings.TrimSpace(viper.GetString("erc4337_bundler_entrypoint_version")))
 	var entryPointVersion userop.Version
@@ -306,6 +396,17 @@ func GetValues() *Values {
 		IsOpStackNetwork:             isOpStackNetwork,
 		IsArbStackNetwork:            isArbStackNetwork,
 		IsRIP7212Supported:           isRIP7212Supported,
+		StoreBackend:                 storeBackend,
+		StoreURL:                     storeURL,
+		StoreNamespace:               storeNamespace,
+		StoreUsername:                storeUsername,
+		StorePassword:                storePassword,
+		StoreDB:                      storeDB,
+		StorePoolSize:                storePoolSize,
+		StoreAddrs:                   storeAddrs,
+		StoreMasterName:              storeMasterName,
+		StoreOpTTL:                   storeOpTTL,
+		StoreOpTTLExplicit:           storeOpTTLSet,
 		DebugMode:                    debugMode,
 		GinMode:                      ginMode,
 	}

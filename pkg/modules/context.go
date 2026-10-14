@@ -1,12 +1,13 @@
 package modules
 
 import (
+	"context"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/pkg/entrypoint"
 	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
-	"github.com/zarbanio/bundler/pkg/mempool"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
@@ -96,19 +97,20 @@ func NewUserOpHandlerContext(
 	op userop.UserOperationInterface,
 	entryPoint common.Address,
 	chainID *big.Int,
-	mem *mempool.Mempool,
+	mem store.MempoolStore,
 	gs stake.GetStakeFunc,
 ) (*UserOpHandlerCtx, error) {
 	// Fetch any pending UserOperations in the mempool by entity
-	pso, err := mem.GetOps(entryPoint, op.GetSender())
+	bctx := context.Background()
+	pso, err := mem.Ops(bctx, entryPoint, op.GetSender())
 	if err != nil {
 		return nil, err
 	}
-	pfo, err := mem.GetOps(entryPoint, op.GetFactory())
+	pfo, err := mem.Ops(bctx, entryPoint, op.GetFactory())
 	if err != nil {
 		return nil, err
 	}
-	ppo, err := mem.GetOps(entryPoint, op.GetPaymaster())
+	ppo, err := mem.Ops(bctx, entryPoint, op.GetPaymaster())
 	if err != nil {
 		return nil, err
 	}
