@@ -1,27 +1,25 @@
 package checks
 
 import (
+	"context"
 	"math/big"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/zarbanio/bundler/pkg/altmempools"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
+	"github.com/zarbanio/bundler/pkg/store"
+	"github.com/zarbanio/bundler/pkg/store/memory"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
-func newStandalone(t *testing.T) (*Standalone, *badger.DB, *httptest.Server) {
+func newStandalone(t *testing.T) (*Standalone, store.CodeHashStore, *httptest.Server) {
 	t.Helper()
-	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true).WithLoggingLevel(badger.ERROR))
-	if err != nil {
-		t.Fatalf("badger: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
+	codeHashes := memory.New(store.Config{Backend: store.BackendMemory}).CodeHash()
 
 	srv := httptest.NewServer(nil)
 	t.Cleanup(srv.Close)
@@ -37,8 +35,8 @@ func newStandalone(t *testing.T) (*Standalone, *badger.DB, *httptest.Server) {
 		t.Fatalf("altmempools: %v", err)
 	}
 	rep := &entities.ReputationConstants{}
-	s := New(db, r, ovr, alt, big.NewInt(1_000_000), big.NewInt(10_000_000), false, "callTracer", rep)
-	return s, db, srv
+	s := New(codeHashes, r, ovr, alt, big.NewInt(1_000_000), big.NewInt(10_000_000), false, "callTracer", rep)
+	return s, codeHashes, srv
 }
 
 func TestStandalone_NewSetsFields(t *testing.T) {
@@ -60,7 +58,8 @@ func TestStandalone_NewSetsFields(t *testing.T) {
 }
 
 func TestStandalone_Clean_RemovesHashes(t *testing.T) {
-	s, db, _ := newStandalone(t)
+	s, codeHashes, _ := newStandalone(t)
+	ctx := context.Background()
 
 	// Pre-populate with code hashes for two userOpHashes.
 	mk := func(nonce int64, sender string) userop.UserOperation {
@@ -83,16 +82,14 @@ func TestStandalone_Clean_RemovesHashes(t *testing.T) {
 	hash1 := op1.GetUserOpHash(common.Address{}, big.NewInt(1))
 	hash2 := op2.GetUserOpHash(common.Address{}, big.NewInt(1))
 
-	if err := db.Update(func(txn *badger.Txn) error {
-		if err := txn.Set(getCodeHashesKey(hash1), []byte("[]")); err != nil {
-			return err
-		}
-		return txn.Set(getCodeHashesKey(hash2), []byte("[]"))
-	}); err != nil {
+	if err := codeHashes.Save(ctx, hash1, []store.CodeHash{}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := codeHashes.Save(ctx, hash2, []store.CodeHash{}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 
-	ctx := modules.NewBatchHandlerContext(
+	batchCtx := modules.NewBatchHandlerContext(
 		[]*userop.UserOperation{&op1},
 		common.Address{},
 		big.NewInt(1),
@@ -100,19 +97,19 @@ func TestStandalone_Clean_RemovesHashes(t *testing.T) {
 		big.NewInt(1),
 		big.NewInt(1),
 	)
-	ctx.MarkOpIndexForRemoval(0, "remove")
+	batchCtx.MarkOpIndexForRemoval(0, "remove")
 	// Put op2 back into batch so both ops get cleaned.
-	ctx.Batch = append(ctx.Batch, &op2)
+	batchCtx.Batch = append(batchCtx.Batch, &op2)
 
-	if err := s.Clean()(ctx); err != nil {
+	if err := s.Clean()(batchCtx); err != nil {
 		t.Fatalf("Clean: %v", err)
 	}
 
-	if _, err := getSavedCodeHashes(db, hash1); err == nil {
-		t.Fatal("expected hash1 to be removed")
+	if _, err := codeHashes.Get(ctx, hash1); !store.IsNotFound(err) {
+		t.Fatalf("expected hash1 to be removed, got %v", err)
 	}
-	if _, err := getSavedCodeHashes(db, hash2); err == nil {
-		t.Fatal("expected hash2 to be removed")
+	if _, err := codeHashes.Get(ctx, hash2); !store.IsNotFound(err) {
+		t.Fatalf("expected hash2 to be removed, got %v", err)
 	}
 }
 

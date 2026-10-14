@@ -72,6 +72,28 @@ to `v0.9`.
 |----------|---------|-------------|
 | `ERC4337_BUNDLER_OP_LOOKUP_LIMIT` | `2000` | Maximum number of blocks to look back for UserOperation receipts |
 
+### Storage Configuration
+
+The mempool, reputation counters, and code-hash cache run on a pluggable
+backend. See [STORAGE.md](STORAGE.md) for the architecture and scaling model.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ERC4337_BUNDLER_STORE_BACKEND` | inferred | `badger`, `redis`, `valkey`, or `memory`. Inferred from `STORE_URL` (Redis/Valkey) when empty, else BadgerDB |
+| `ERC4337_BUNDLER_STORE_URL` | None | Connection URL: `redis://`, `rediss://` (TLS), or `valkey://`. Use `rediss://` in production |
+| `ERC4337_BUNDLER_STORE_ADDRS` | None | Comma-separated `host:port` list for Sentinel/Cluster mode |
+| `ERC4337_BUNDLER_STORE_MASTER_NAME` | None | Sentinel master name (enables Sentinel mode) |
+| `ERC4337_BUNDLER_STORE_USERNAME` | None | Redis/Valkey ACL username |
+| `ERC4337_BUNDLER_STORE_PASSWORD` | None | Redis/Valkey password |
+| `ERC4337_BUNDLER_STORE_DB` | `0` | Redis logical database index |
+| `ERC4337_BUNDLER_STORE_POOL_SIZE` | driver default | Connection pool size |
+| `ERC4337_BUNDLER_STORE_NAMESPACE` | None | Deployment prefix added to every key |
+| `ERC4337_BUNDLER_STORE_OP_TTL_SECONDS` | `MAX_OP_TTL_SECONDS` | TTL for pending ops in a shared backend; `0` disables |
+
+The chain ID is always part of the key namespace for Redis/Valkey, so a single
+cluster can safely serve multiple chains. BadgerDB is node-local and keeps the
+legacy un-namespaced layout so existing data keeps loading.
+
 ### Searcher Mode (Required for `--mode searcher`)
 
 | Variable | Default | Description |
@@ -177,6 +199,29 @@ ERC4337_BUNDLER_IS_OP_STACK_NETWORK=true
 ERC4337_BUNDLER_ETH_CLIENT_URL=https://arbitrum-mainnet.infura.io/v3/YOUR_PROJECT_ID
 ERC4337_BUNDLER_PRIVATE_KEY=0x...
 ERC4337_BUNDLER_IS_ARB_STACK_NETWORK=true
+```
+
+### Shared Storage (Redis/Valkey, TLS)
+
+```bash
+ERC4337_BUNDLER_ETH_CLIENT_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
+ERC4337_BUNDLER_PRIVATE_KEY=0x...
+
+# Use a shared backend so several replicas see the same mempool.
+ERC4337_BUNDLER_STORE_BACKEND=redis
+ERC4337_BUNDLER_STORE_URL=rediss://:PASSWORD@redis.example.com:6379/0
+ERC4337_BUNDLER_STORE_NAMESPACE=qubenode-mainnet
+# Defaults to MAX_OP_TTL_SECONDS; set explicitly to bound key growth.
+ERC4337_BUNDLER_STORE_OP_TTL_SECONDS=180
+```
+
+For Sentinel, list the sentinels and the master name:
+
+```bash
+ERC4337_BUNDLER_STORE_BACKEND=redis
+ERC4337_BUNDLER_STORE_ADDRS=sentinel-0:26379,sentinel-1:26379,sentinel-2:26379
+ERC4337_BUNDLER_STORE_MASTER_NAME=mymaster
+ERC4337_BUNDLER_STORE_PASSWORD=...
 ```
 
 ### With Observability

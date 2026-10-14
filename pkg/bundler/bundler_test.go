@@ -1,27 +1,22 @@
 package bundler
 
 import (
+	"context"
 	"errors"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/zarbanio/bundler/internal/testutils"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
-func newTestBundler(t *testing.T) (*Bundler, *mempool.Mempool, common.Address) {
+func newTestBundler(t *testing.T) (*Bundler, store.MempoolStore, common.Address) {
 	t.Helper()
-	db := testutils.DBMock()
-	t.Cleanup(func() { _ = db.Close() })
-
-	mem, err := mempool.New(db)
-	if err != nil {
-		t.Fatalf("mempool.New: %v", err)
-	}
+	mem := testutils.MemoryStore().Mempool()
 	ep := testutils.ValidAddress5
 	b := New(mem, testutils.ChainID, []common.Address{ep})
 	b.SetGetBaseFeeFunc(func() (*big.Int, error) { return big.NewInt(1), nil })
@@ -44,7 +39,7 @@ func TestBundler_Process_EmptyMempool(t *testing.T) {
 func TestBundler_Process_BatchHandlerInvoked(t *testing.T) {
 	b, mem, ep := newTestBundler(t)
 	op := testutils.MockValidInitUserOp()
-	if err := mem.AddOp(ep, op); err != nil {
+	if err := mem.Add(context.Background(), ep, op); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
 
@@ -70,7 +65,7 @@ func TestBundler_Process_BatchHandlerInvoked(t *testing.T) {
 	}
 
 	// Mempool should be drained after a successful Process.
-	rem, err := mem.Dump(ep)
+	rem, err := mem.All(context.Background(), ep)
 	if err != nil {
 		t.Fatalf("Dump: %v", err)
 	}
@@ -84,10 +79,10 @@ func TestBundler_Process_PendingRemoval(t *testing.T) {
 	op := testutils.MockValidInitUserOp()
 	op2 := testutils.MockValidInitUserOp()
 	op2.Nonce = big.NewInt(1)
-	if err := mem.AddOp(ep, op); err != nil {
+	if err := mem.Add(context.Background(), ep, op); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
-	if err := mem.AddOp(ep, op2); err != nil {
+	if err := mem.Add(context.Background(), ep, op2); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
 
@@ -111,7 +106,7 @@ func TestBundler_Process_PendingRemoval(t *testing.T) {
 func TestBundler_Process_BatchHandlerError(t *testing.T) {
 	b, mem, ep := newTestBundler(t)
 	op := testutils.MockValidInitUserOp()
-	if err := mem.AddOp(ep, op); err != nil {
+	if err := mem.Add(context.Background(), ep, op); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
 
@@ -133,7 +128,7 @@ func TestBundler_MaxBatchAdjusts(t *testing.T) {
 	for i := int64(0); i < 3; i++ {
 		op := testutils.MockValidInitUserOp()
 		op.Nonce = big.NewInt(i)
-		if err := mem.AddOp(ep, op); err != nil {
+		if err := mem.Add(context.Background(), ep, op); err != nil {
 			t.Fatalf("AddOp: %v", err)
 		}
 	}
@@ -154,7 +149,7 @@ func TestBundler_MaxBatchAdjusts(t *testing.T) {
 
 func TestBundler_GasPriceErrorsPropagate(t *testing.T) {
 	b, mem, ep := newTestBundler(t)
-	if err := mem.AddOp(ep, testutils.MockValidInitUserOp()); err != nil {
+	if err := mem.Add(context.Background(), ep, testutils.MockValidInitUserOp()); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
 
@@ -165,7 +160,7 @@ func TestBundler_GasPriceErrorsPropagate(t *testing.T) {
 	}
 
 	// Reset state for tip / gas price error checks.
-	if err := mem.AddOp(ep, testutils.MockValidInitUserOp()); err != nil {
+	if err := mem.Add(context.Background(), ep, testutils.MockValidInitUserOp()); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
 	b.SetGetBaseFeeFunc(func() (*big.Int, error) { return big.NewInt(1), nil })
@@ -175,7 +170,7 @@ func TestBundler_GasPriceErrorsPropagate(t *testing.T) {
 		t.Fatalf("tip err mismatch: got %v", err)
 	}
 
-	if err := mem.AddOp(ep, testutils.MockValidInitUserOp()); err != nil {
+	if err := mem.Add(context.Background(), ep, testutils.MockValidInitUserOp()); err != nil {
 		t.Fatalf("AddOp: %v", err)
 	}
 	b.SetGetGasTipFunc(func() (*big.Int, error) { return big.NewInt(1), nil })

@@ -25,9 +25,7 @@ func newRpcAdapter(t *testing.T) *RpcAdapter {
 	}
 	eth := ethclient.NewClient(r)
 
-	db := testutils.DBMock()
-	t.Cleanup(func() { _ = db.Close() })
-	rep := entities.New(db, eth, nil)
+	rep := entities.New(testutils.MemoryStore().Reputation(), eth, &entities.ReputationConstants{})
 	bun := bundler.New(mem, testutils.ChainID, c.supportedEntryPoints)
 	dbg := NewDebug(testutils.DummyEOA, eth, mem, rep, bun, testutils.ChainID, c.supportedEntryPoints[0], testutils.DummyEOA.Address)
 	return NewRpcAdapter(c, dbg, r)

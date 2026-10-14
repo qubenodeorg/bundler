@@ -3,12 +3,12 @@ package checks
 import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/zarbanio/bundler/pkg/store"
 )
 
-type codeHash struct {
-	Address common.Address `json:"address"`
-	Hash    common.Hash    `json:"hash"`
-}
+// codeHash is the on-wire snapshot of a contract's code hash, shared with the
+// persistent code-hash store.
+type codeHash = store.CodeHash
 
 func getCodeHashes(ic []common.Address, gc GetCodeFunc) ([]codeHash, error) {
 	ret := []codeHash{}

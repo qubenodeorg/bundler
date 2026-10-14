@@ -38,6 +38,14 @@ services:
       # ERC4337_BUNDLER_IS_OP_STACK_NETWORK: "true"
       # ERC4337_BUNDLER_IS_ARB_STACK_NETWORK: "true"
 
+      # --- Optional: shared storage (multiple replicas) ---
+      # Uncomment these and the `redis` service below to back the mempool with
+      # Redis/Valkey instead of the node-local BadgerDB. See docs/STORAGE.md.
+      # ERC4337_BUNDLER_STORE_BACKEND: "redis"
+      # ERC4337_BUNDLER_STORE_URL: "redis://redis:6379/0"
+      # ERC4337_BUNDLER_STORE_NAMESPACE: "qubenode"
+      # ERC4337_BUNDLER_STORE_OP_TTL_SECONDS: "180"
+
     ports:
       # host:container. In Dokploy you can instead route to container port 4337
       # via the built-in Traefik proxy + a domain and drop this mapping.
@@ -63,5 +71,16 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Optional: shared storage for multi-replica deployments. Enable together
+  # with the ERC4337_BUNDLER_STORE_* variables on the bundler service above.
+  # In production prefer a managed Redis/Valkey with TLS and auth.
+  # redis:
+  #   image: valkey/valkey:7-alpine
+  #   restart: unless-stopped
+  #   command: ["valkey-server", "--save", "60", "1", "--appendonly", "yes"]
+  #   volumes:
+  #     - redis-data:/data
+
 volumes:
   bundler-data:
+  # redis-data:

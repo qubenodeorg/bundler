@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	badger "github.com/dgraph-io/badger/v3"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -20,7 +19,6 @@ import (
 	"github.com/zarbanio/bundler/pkg/entrypoint/stake"
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/jsonrpc"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules/batch"
 	"github.com/zarbanio/bundler/pkg/modules/checks"
 	"github.com/zarbanio/bundler/pkg/modules/entities"
@@ -28,6 +26,8 @@ import (
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
 	"github.com/zarbanio/bundler/pkg/modules/relay"
 	"github.com/zarbanio/bundler/pkg/signer"
+	"github.com/zarbanio/bundler/pkg/store"
+	"github.com/zarbanio/bundler/pkg/store/factory"
 	"github.com/zarbanio/bundler/pkg/tracer"
 	"github.com/zarbanio/bundler/pkg/userop"
 
@@ -55,13 +55,6 @@ func PrivateMode() {
 	fmt.Println("EOA Address: ", eoa.Address.Hex())
 	beneficiary := common.HexToAddress(conf.Beneficiary)
 
-	db, err := badger.Open(badger.DefaultOptions(conf.DataDirectory))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer func() { _ = db.Close() }()
-	runDBGarbageCollection(db)
-
 	rpc, err := rpc.Dial(conf.EthClientUrl)
 	if err != nil {
 		log.Fatal(err)
@@ -73,6 +66,25 @@ func PrivateMode() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// A shared store is namespaced by chain ID so one backend can serve several
+	// chains. BadgerDB stays un-namespaced: it is node-local and single-chain,
+	// and keeping the legacy layout means an in-place upgrade does not lose
+	// pending ops. The store is opened after the chain is known and closed last
+	// (defers unwind LIFO, so the batch loop stops before the store closes).
+	storeCfg := conf.StoreConfig()
+	if storeCfg.Backend == store.BackendRedis || storeCfg.Backend == store.BackendValkey {
+		storeCfg.ChainID = chain
+	}
+	st, err := factory.Open(context.Background(), storeCfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	logr.Info("storage backend initialized",
+		"backend", string(storeCfg.Backend),
+		"namespace", storeCfg.KeyPrefix(),
+	)
 
 	if o11y.IsEnabled(conf.OTELServiceName) {
 		o11yOpts := &o11y.Opts{
@@ -127,10 +139,7 @@ func PrivateMode() {
 		}
 	})
 
-	mem, err := mempool.New(db)
-	if err != nil {
-		log.Fatal(err)
-	}
+	mem := st.Mempool()
 
 	alt, err := altmempools.NewFromIPFS(chain, conf.AltMempoolIPFSGateway, conf.AltMempoolIds)
 	if err != nil {
@@ -138,7 +147,7 @@ func PrivateMode() {
 	}
 
 	check := checks.New(
-		db,
+		st.CodeHash(),
 		rpc,
 		ovr,
 		alt,
@@ -154,7 +163,7 @@ func PrivateMode() {
 	relayer := relay.New(eoa, eth, chain, beneficiary, logr)
 	relayer.SetRpc(rpc)
 
-	rep := entities.New(db, eth, conf.ReputationConstants)
+	rep := entities.New(st.Reputation(), eth, conf.ReputationConstants)
 
 	// Init Client
 	c := client.New(
@@ -242,7 +251,7 @@ func PrivateMode() {
 	)
 	r.GET("/ping", livenessHandler())
 	r.GET("/live", livenessHandler())
-	r.GET("/ready", readinessHandler(eth, db, logr))
+	r.GET("/ready", readinessHandler(eth, st, logr))
 	handlers := []gin.HandlerFunc{
 		jsonrpc.Controller(client.NewRpcAdapter(c, d, rpc)),
 		jsonrpc.WithOTELTracerAttributes(),

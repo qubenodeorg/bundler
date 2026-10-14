@@ -2,6 +2,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -18,18 +19,18 @@ import (
 	"github.com/zarbanio/bundler/pkg/gas"
 	"github.com/zarbanio/bundler/pkg/handlers"
 	"github.com/zarbanio/bundler/pkg/handlers/payg"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/noop"
 	"github.com/zarbanio/bundler/pkg/signer"
 	"github.com/zarbanio/bundler/pkg/state"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 )
 
 // Client controls the end to end process of adding incoming UserOperations to the mempool. It also
 // implements the required RPC methods as specified in EIP-4337.
 type Client struct {
-	mempool              *mempool.Mempool
+	mempool              store.MempoolStore
 	ovr                  *gas.OverheadResolver
 	chainID              *big.Int
 	supportedEntryPoints []common.Address
@@ -49,7 +50,7 @@ type Client struct {
 // New initializes a new ERC-4337 client which can be extended with modules for validating UserOperations
 // that are allowed to be added to the mempool.
 func New(
-	mempool *mempool.Mempool,
+	mempool store.MempoolStore,
 	ovr *gas.OverheadResolver,
 	chainID *big.Int,
 	supportedEntryPoints []common.Address,
@@ -212,7 +213,7 @@ func (i *Client) SendUserOperation(op map[string]any, ep string) (string, error)
 		return "", err
 	}
 
-	if err := i.mempool.AddOp(epAddr, packedOp); err != nil {
+	if err := i.mempool.Add(context.Background(), epAddr, packedOp); err != nil {
 		l.Error(err, "eth_sendUserOperation error")
 		return "", err
 	}

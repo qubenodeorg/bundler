@@ -9,10 +9,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-logr/logr"
 	"github.com/zarbanio/bundler/internal/logger"
-	"github.com/zarbanio/bundler/pkg/mempool"
 	"github.com/zarbanio/bundler/pkg/modules"
 	"github.com/zarbanio/bundler/pkg/modules/gasprice"
 	"github.com/zarbanio/bundler/pkg/modules/noop"
+	"github.com/zarbanio/bundler/pkg/store"
 	"github.com/zarbanio/bundler/pkg/userop"
 
 	"go.opentelemetry.io/otel"
@@ -22,7 +22,7 @@ import (
 // Bundler controls the end to end process of creating a batch of UserOperations from the mempool and sending
 // it to the EntryPoint.
 type Bundler struct {
-	mempool              *mempool.Mempool
+	mempool              store.MempoolStore
 	chainID              *big.Int
 	supportedEntryPoints []common.Address
 	batchHandler         modules.BatchHandlerFunc
@@ -39,7 +39,7 @@ type Bundler struct {
 
 // New initializes a new EIP-4337 bundler which can be extended with modules for validating batches and
 // excluding UserOperations that should not be sent to the EntryPoint and/or dropped from the mempool.
-func New(mempool *mempool.Mempool, chainID *big.Int, supportedEntryPoints []common.Address) *Bundler {
+func New(mempool store.MempoolStore, chainID *big.Int, supportedEntryPoints []common.Address) *Bundler {
 	return &Bundler{
 		mempool:              mempool,
 		chainID:              chainID,
@@ -92,7 +92,7 @@ func (i *Bundler) UserMeter(meter metric.Meter) error {
 		metric.WithInt64Callback(func(ctx context.Context, io metric.Int64Observer) error {
 			size := 0
 			for _, ep := range i.supportedEntryPoints {
-				batch, err := i.mempool.Dump(ep)
+				batch, err := i.mempool.All(context.Background(), ep)
 				if err != nil {
 					return err
 				}
@@ -121,7 +121,7 @@ func (i *Bundler) Process(ep common.Address) (*modules.BatchHandlerCtx, error) {
 
 	// Get all pending userOps from the mempool. This will be in FIFO order. Downstream modules should sort it
 	// based on more specific strategies.
-	batch, err := i.mempool.Dump(ep)
+	batch, err := i.mempool.All(context.Background(), ep)
 	if err != nil {
 		l.Error(err, "bundler run error")
 		return nil, err
@@ -171,7 +171,7 @@ func (i *Bundler) Process(ep common.Address) (*modules.BatchHandlerCtx, error) {
 		dh = append(dh, item.Op.GetUserOpHash(ep, i.chainID).String())
 		dr = append(dr, item.Reason)
 	}
-	if err := i.mempool.RemoveOps(ep, rmOps...); err != nil {
+	if err := i.mempool.Remove(context.Background(), ep, rmOps...); err != nil {
 		l.Error(err, "bundler run error")
 		return nil, err
 	}
