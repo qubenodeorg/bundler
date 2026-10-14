@@ -151,7 +151,13 @@ func ComputeStatus(opsSeen, opsIncluded int, p ReputationParams) ReputationStatu
 	if opsSeen == 0 {
 		return StatusOK
 	}
-	minExpectedIncluded := opsSeen / p.MinInclusionRateDenominator
+	// Guard against a zero/unset denominator (misconfiguration) instead of
+	// panicking on the request path.
+	denom := p.MinInclusionRateDenominator
+	if denom <= 0 {
+		denom = 1
+	}
+	minExpectedIncluded := opsSeen / denom
 	switch {
 	case minExpectedIncluded <= opsIncluded+p.ThrottlingSlack:
 		return StatusOK

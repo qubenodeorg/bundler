@@ -70,6 +70,10 @@ type Values struct {
 	StoreAddrs      []string
 	StoreMasterName string
 	StoreOpTTL      time.Duration
+	// StoreOpTTLExplicit records whether the operator set the TTL, so an
+	// explicit 0 can disable it while an unset value falls back to MaxOpTTL for
+	// shared backends.
+	StoreOpTTLExplicit bool
 
 	// Undocumented variables.
 	DebugMode bool
@@ -95,9 +99,10 @@ func (v *Values) StoreConfig() store.Config {
 	}
 
 	opTTL := v.StoreOpTTL
-	if opTTL == 0 && (backend == store.BackendRedis || backend == store.BackendValkey) {
+	if !v.StoreOpTTLExplicit && (backend == store.BackendRedis || backend == store.BackendValkey) {
 		// Default the shared-store pending-op TTL to the in-process op TTL so a
-		// crashed replica cannot leave state behind forever.
+		// crashed replica cannot leave state behind forever. An explicit value
+		// (including 0, to disable) is honored as-is.
 		opTTL = v.MaxOpTTL
 	}
 
@@ -208,7 +213,9 @@ func GetValues() *Values {
 	viper.SetDefault("erc4337_bundler_store_namespace", "")
 	viper.SetDefault("erc4337_bundler_store_db", 0)
 	viper.SetDefault("erc4337_bundler_store_pool_size", 0)
-	viper.SetDefault("erc4337_bundler_store_op_ttl_seconds", 0)
+	// No default for store_op_ttl_seconds: the shared-store TTL defaults to
+	// MAX_OP_TTL_SECONDS unless the operator sets this explicitly, in which case
+	// an explicit 0 disables it.
 
 	// Read in from .env file if available
 	viper.SetConfigName(".env")
@@ -333,6 +340,7 @@ func GetValues() *Values {
 	storeAddrs := envArrayToStringSlice(viper.GetString("erc4337_bundler_store_addrs"))
 	storeMasterName := viper.GetString("erc4337_bundler_store_master_name")
 	storeOpTTL := time.Second * viper.GetDuration("erc4337_bundler_store_op_ttl_seconds")
+	storeOpTTLSet := viper.IsSet("erc4337_bundler_store_op_ttl_seconds")
 
 	entryPointVersionStr := strings.ToLower(strings.TrimSpace(viper.GetString("erc4337_bundler_entrypoint_version")))
 	var entryPointVersion userop.Version
@@ -397,6 +405,7 @@ func GetValues() *Values {
 		StoreAddrs:                   storeAddrs,
 		StoreMasterName:              storeMasterName,
 		StoreOpTTL:                   storeOpTTL,
+		StoreOpTTLExplicit:           storeOpTTLSet,
 		DebugMode:                    debugMode,
 		GinMode:                      ginMode,
 	}

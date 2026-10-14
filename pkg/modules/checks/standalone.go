@@ -267,7 +267,9 @@ func (s *Standalone) CodeHashes() modules.BatchHandlerFunc {
 		for i := end; i >= 0; i-- {
 			op := ctx.Batch[i]
 			chs, err := s.codeHashes.Get(context.Background(), op.GetUserOpHash(ctx.EntryPoint, ctx.ChainID))
-			if err != nil {
+			if err != nil && !store.IsNotFound(err) {
+				// No saved snapshot means there is nothing to re-verify; only a
+				// real backend failure should abort the batch.
 				return err
 			}
 

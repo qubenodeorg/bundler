@@ -28,6 +28,17 @@ func TestComputeStatus(t *testing.T) {
 	}
 }
 
+// TestComputeStatusZeroDenominator guards against a divide-by-zero panic from a
+// misconfigured (unset) inclusion-rate denominator.
+func TestComputeStatusZeroDenominator(t *testing.T) {
+	if got := ComputeStatus(100, 0, ReputationParams{}); got != StatusBanned {
+		t.Fatalf("ComputeStatus with zero denominator = %v, want Banned", got)
+	}
+	if got := ComputeStatus(0, 0, ReputationParams{}); got != StatusOK {
+		t.Fatalf("ComputeStatus(0,0) = %v, want OK", got)
+	}
+}
+
 func TestOpsCountDecay(t *testing.T) {
 	base := time.Unix(1_700_000_000, 0)
 	c := OpsCount{Seen: 2400, Included: 240, UpdatedAt: base}

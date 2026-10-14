@@ -85,7 +85,11 @@ func testMempoolAddGetAllRemove(t *testing.T, st store.Store) {
 			t.Fatalf("Ops(%s) after remove = %d, want 0", entity, len(got))
 		}
 	}
-	if all, _ := m.All(ctx, ep); len(all) != 0 {
+	all, err = m.All(ctx, ep)
+	if err != nil {
+		t.Fatalf("All after remove: %v", err)
+	}
+	if len(all) != 0 {
 		t.Fatalf("All after remove = %d, want 0", len(all))
 	}
 }
@@ -130,11 +134,18 @@ func testMempoolReplacement(t *testing.T, st store.Store) {
 	}
 
 	// The stale factory index entry must be gone.
-	if got, _ := m.Ops(ctx, ep, factoryA); len(got) != 0 {
+	got, err := m.Ops(ctx, ep, factoryA)
+	if err != nil {
+		t.Fatalf("Ops(stale factory): %v", err)
+	}
+	if len(got) != 0 {
 		t.Fatalf("stale factory index has %d ops, want 0", len(got))
 	}
 	assertOps(t, "new factory", m, ctx, factoryB, replacement)
-	all, _ := m.All(ctx, ep)
+	all, err := m.All(ctx, ep)
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
 	if len(all) != 1 || !opsEqual(all[0], replacement) {
 		t.Fatalf("All = %v, want only the replacement", all)
 	}
@@ -152,7 +163,11 @@ func testMempoolClear(t *testing.T, st store.Store) {
 	if err := m.Clear(ctx); err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
-	if all, _ := m.All(ctx, ep); len(all) != 0 {
+	all, err := m.All(ctx, ep)
+	if err != nil {
+		t.Fatalf("All after clear: %v", err)
+	}
+	if len(all) != 0 {
 		t.Fatalf("All after clear = %d, want 0", len(all))
 	}
 }
@@ -165,7 +180,11 @@ func testReputationApplyStatus(t *testing.T, st store.Store) {
 	params := store.ReputationParams{MinInclusionRateDenominator: 100, ThrottlingSlack: 10, BanSlack: 20}
 	addr := common.HexToAddress("0x9999999999999999999999999999999999999999")
 
-	if status, _ := r.Status(ctx, addr, params); status != store.StatusOK {
+	status, err := r.Status(ctx, addr, params)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status != store.StatusOK {
 		t.Fatalf("fresh status = %v, want OK", status)
 	}
 
@@ -179,21 +198,33 @@ func testReputationApplyStatus(t *testing.T, st store.Store) {
 	if seen != 1500 || included != 0 {
 		t.Fatalf("OpsCount = (%d,%d), want (1500,0)", seen, included)
 	}
-	if status, _ := r.Status(ctx, addr, params); status != store.StatusThrottled {
+	status, err = r.Status(ctx, addr, params)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status != store.StatusThrottled {
 		t.Fatalf("status = %v, want Throttled", status)
 	}
 
 	if err := r.Apply(ctx, store.ReputationDelta{Address: addr, OpsSeen: 1000}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if status, _ := r.Status(ctx, addr, params); status != store.StatusBanned {
+	status, err = r.Status(ctx, addr, params)
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status != store.StatusBanned {
 		t.Fatalf("status = %v, want Banned", status)
 	}
 
 	if err := r.Apply(ctx, store.ReputationDelta{Address: addr, OpsSeen: -100000}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if seen, _, _ := r.OpsCount(ctx, addr); seen != 0 {
+	seen, _, err = r.OpsCount(ctx, addr)
+	if err != nil {
+		t.Fatalf("OpsCount: %v", err)
+	}
+	if seen != 0 {
 		t.Fatalf("seen after negative delta = %d, want 0", seen)
 	}
 }
@@ -208,7 +239,10 @@ func testReputationOverrideDumpClear(t *testing.T, st store.Store) {
 	if err := r.Override(ctx, []store.ReputationEntry{{Address: addr, OpsSeen: 5, OpsIncluded: 2}}); err != nil {
 		t.Fatalf("Override: %v", err)
 	}
-	seen, included, _ := r.OpsCount(ctx, addr)
+	seen, included, err := r.OpsCount(ctx, addr)
+	if err != nil {
+		t.Fatalf("OpsCount: %v", err)
+	}
 	if seen != 5 || included != 2 {
 		t.Fatalf("OpsCount = (%d,%d), want (5,2)", seen, included)
 	}
@@ -224,7 +258,11 @@ func testReputationOverrideDumpClear(t *testing.T, st store.Store) {
 	if err := r.Clear(ctx); err != nil {
 		t.Fatalf("Clear: %v", err)
 	}
-	if dump, _ := r.Dump(ctx); len(dump) != 0 {
+	dump, err = r.Dump(ctx)
+	if err != nil {
+		t.Fatalf("Dump after clear: %v", err)
+	}
+	if len(dump) != 0 {
 		t.Fatalf("Dump after clear = %d, want 0", len(dump))
 	}
 }

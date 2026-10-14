@@ -68,6 +68,17 @@ func newClient(cfg store.Config) (goredis.UniversalClient, error) {
 			WriteTimeout: cfg.WriteTimeout,
 			MaxRetries:   cfg.MaxRetries,
 		}
+		// Independent settings take precedence over the URL when provided, so
+		// credentials/DB injected separately from the URL are honored.
+		if cfg.Username != "" {
+			base.Username = cfg.Username
+		}
+		if cfg.Password != "" {
+			base.Password = cfg.Password
+		}
+		if cfg.DB != 0 {
+			base.DB = cfg.DB
+		}
 		if parsed.TLSConfig != nil {
 			base.TLSConfig = parsed.TLSConfig
 		}
@@ -189,8 +200,19 @@ func (s *Store) entityKey(ep common.Address, entity common.Address) string {
 	return s.entityPrefix(ep) + entity.String()
 }
 
+// reputationTag keeps every reputation key for a deployment+chain in a single
+// Redis Cluster slot, so an Apply script touching several entities is
+// cluster-safe. The tag is per deployment/chain to avoid concentrating all
+// traffic in one slot.
+func (s *Store) reputationTag() string {
+	if tag := s.cfg.KeyPrefix(); tag != "" {
+		return tag
+	}
+	return "reputation"
+}
+
 func (s *Store) reputationKey(addr common.Address) string {
-	return s.cfg.Key("reputation", addr.String())
+	return s.cfg.Key("reputation") + ":{" + s.reputationTag() + "}:" + addr.String()
 }
 
 func (s *Store) reputationPattern() string { return s.cfg.Key("reputation") + ":*" }
@@ -235,6 +257,13 @@ end
 if ttl > 0 then
   redis.call('EXPIRE', opKey, ttl)
   redis.call('EXPIRE', idxKey, ttl)
+  -- Refresh the shared indexes too: each live op was added within ttl, so the
+  -- zsets outlive every op they reference while still expiring once traffic
+  -- for that entrypoint/entity stops.
+  redis.call('EXPIRE', orderKey, ttl)
+  for i = 1, n do
+    redis.call('EXPIRE', KEYS[4 + i], ttl)
+  end
 end
 return seq
 `)
