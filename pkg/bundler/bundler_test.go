@@ -209,5 +209,5 @@ func TestBundler_UseLoggerAndUseModules(t *testing.T) {
 		t.Fatalf("noop base fee returned err: %v", err)
 	}
 	// Sanity: userop default still in canonical packed v0.6 shape.
-	var _ *userop.UserOperation = testutils.MockValidInitUserOp()
+	_ = (*userop.UserOperation)(testutils.MockValidInitUserOp())
 }

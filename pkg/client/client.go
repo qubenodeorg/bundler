@@ -296,7 +296,7 @@ func (i *Client) EstimateUserOperationGas(
 		CallGasLimit:         big.NewInt(int64(cg)),
 
 		// TODO: Deprecate in v0.7
-		VerificationGas: big.NewInt(int64(vg)),
+		VerificationGas: big.NewInt(int64(vg)), //nolint:staticcheck // v0.6 legacy field still served to clients
 	}
 	if version != userop.V0_6 {
 		res.PaymasterVerificationGasLimit = userOp.GetPaymasterVerificationGasLimit()
