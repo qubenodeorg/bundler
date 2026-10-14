@@ -30,7 +30,7 @@ func RpcMock(mocks MethodMocks) *httptest.Server {
 		mock, ok := mocks[req.Method]
 		if !ok {
 			w.WriteHeader(http.StatusBadRequest)
-			if _, err := w.Write([]byte(fmt.Sprintf("method not in mocks: %s", req.Method))); err != nil {
+			if _, err := fmt.Fprintf(w, "method not in mocks: %s", req.Method); err != nil {
 				panic(err)
 			}
 			return

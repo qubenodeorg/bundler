@@ -80,7 +80,7 @@ func validateCreateRules(op *userop.UserOperation, entities knownEntity) error {
 			if nestedCreate > 0 || (ownCreate > 0 && !hasFactory) {
 				return fmt.Errorf("account uses banned opcode: CREATE")
 			}
-			if nestedCreate2 > 0 || (ownCreate2 > 0 && !(hasFactory && factoryIsStaked)) {
+			if nestedCreate2 > 0 || (ownCreate2 > 0 && (!hasFactory || !factoryIsStaked)) {
 				return fmt.Errorf("account uses banned opcode: %s", create2OpCode)
 			}
 		default:

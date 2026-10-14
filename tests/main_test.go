@@ -189,7 +189,7 @@ func GetPaymasterAndData(userOp *userop.UserOperation, entryPointAddress common.
 	if err != nil {
 		return nil, fmt.Errorf("failed to call pm_sponsorUserOperation: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read and parse the response
 	body, err := io.ReadAll(resp.Body)

@@ -343,7 +343,7 @@ func (r *Reputation) Override(entries []*ReputationOverride) error {
 	return r.db.Update(func(txn *badger.Txn) error {
 		var err error
 		for _, entry := range entries {
-			stdErr.Join(err, overrideEntity(txn, entry))
+			err = stdErr.Join(err, overrideEntity(txn, entry))
 		}
 		return err
 	})

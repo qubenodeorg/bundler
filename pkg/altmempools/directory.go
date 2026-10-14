@@ -30,7 +30,7 @@ func fetchMempoolConfig(url string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var data map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {

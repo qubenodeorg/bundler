@@ -56,7 +56,7 @@ func SearcherMode() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	runDBGarbageCollection(db)
 
 	rpc, err := rpc.Dial(conf.EthClientUrl)

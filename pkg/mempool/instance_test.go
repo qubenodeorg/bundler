@@ -12,7 +12,7 @@ import (
 // any changes.
 func TestAddOpToMempool(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := New(db)
 	ep := testutils.ValidAddress1
 	op := testutils.MockValidInitUserOp()
@@ -38,7 +38,7 @@ func TestAddOpToMempool(t *testing.T) {
 // UserOperation already in the mempool.
 func TestReplaceOpInMempool(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := New(db)
 	ep := testutils.ValidAddress1
 	op1 := testutils.MockValidInitUserOp()
@@ -68,7 +68,7 @@ func TestReplaceOpInMempool(t *testing.T) {
 // TestRemoveOpsFromMempool verifies that a UserOperation can be added to the mempool and later removed.
 func TestRemoveOpsFromMempool(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := New(db)
 	ep := testutils.ValidAddress1
 	op := testutils.MockValidInitUserOp()
@@ -94,7 +94,7 @@ func TestRemoveOpsFromMempool(t *testing.T) {
 // FIFO and more specific sorting and filtering is left up to downstream modules to implement.
 func TestDumpFromMempool(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := New(db)
 	ep := testutils.ValidAddress1
 
@@ -139,7 +139,7 @@ func TestDumpFromMempool(t *testing.T) {
 // including ops previously removed.
 func TestNewMempoolLoadsFromDisk(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem1, _ := New(db)
 	ep := testutils.ValidAddress1
 	op1 := testutils.MockValidInitUserOp()

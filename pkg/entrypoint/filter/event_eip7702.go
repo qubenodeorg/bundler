@@ -59,7 +59,7 @@ func FilterEIP7702AccountInitialized(
 		return nil, err
 	}
 
-	defer it.Close()
+	defer func() { _ = it.Close() }()
 
 	for it.Next() {
 		return &EIP7702AccountInitializedEvent{

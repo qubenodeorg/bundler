@@ -14,7 +14,7 @@ import (
 
 func TestNoPendingOps(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
@@ -40,7 +40,7 @@ func TestNoPendingOps(t *testing.T) {
 
 func TestGetPendingSenderOps(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
@@ -83,7 +83,7 @@ func TestGetPendingSenderOps(t *testing.T) {
 
 func TestGetPendingFactoryOps(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = testutils.ValidAddress4.Bytes()
@@ -130,7 +130,7 @@ func TestGetPendingFactoryOps(t *testing.T) {
 
 func TestGetPendingPaymasterOps(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
@@ -177,7 +177,7 @@ func TestGetPendingPaymasterOps(t *testing.T) {
 
 func TestNilDepositInfo(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
@@ -206,7 +206,7 @@ func TestNilDepositInfo(t *testing.T) {
 
 func TestGetSenderDepositInfo(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
@@ -233,7 +233,7 @@ func TestGetSenderDepositInfo(t *testing.T) {
 
 func TestGetFactoryDepositInfo(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = testutils.ValidAddress1.Bytes()
@@ -260,7 +260,7 @@ func TestGetFactoryDepositInfo(t *testing.T) {
 
 func TestGetPaymasterDepositInfo(t *testing.T) {
 	db := testutils.DBMock()
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mem, _ := mempool.New(db)
 	op := testutils.MockValidInitUserOp()
 	op.InitCode = []byte{}
